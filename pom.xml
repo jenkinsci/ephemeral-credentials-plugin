@@ -26,9 +26,12 @@
     <jenkins.version>2.462.3</jenkins.version>
     <java.level>11</java.level>
 
-    <!-- Parent POM's BannedDependencies rule requires this exact
-             property name rather than a literal <version> on the
-             dependency itself. -->
+    <!-- Parent POM's BannedDependencies rule requires this exact property
+             name rather than a literal <version> on the dependency itself.
+             Re-confirmed still necessary (2026-07): the parent POM's own
+             default (2573.vd91b_8a_43e019 as of this check) doesn't match
+             our jenkins.version and reproduces the exact NoSuchMethodError
+             this override was originally added to fix. -->
     <jenkins-test-harness.version>2207.v3b_df04c801d4</jenkins-test-harness.version>
   </properties>
 
@@ -78,10 +81,24 @@
       <artifactId>pipeline-input-step</artifactId>
     </dependency>
 
-    <!-- For EphemeralSecretText's StringCredentialsImpl. -->
+    <!-- For EphemeralSecretText's StringCredentialsImpl and
+             EphemeralSecretFile's FileCredentialsImpl. -->
     <dependency>
       <groupId>org.jenkins-ci.plugins</groupId>
       <artifactId>plain-credentials</artifactId>
+    </dependency>
+
+    <!-- For EphemeralSSHUserPrivateKey's BasicSSHUserPrivateKey. Optional:
+             installations that never use ephemeralSSHUserPrivateKey don't
+             need this plugin installed at all - EphemeralSSHUserPrivateKey's
+             constructor detects its absence and fails with a clear message
+             instead. Marking it optional here makes maven-hpi-plugin record
+             it as an optional plugin dependency in the manifest, so Jenkins
+             doesn't refuse to load this whole plugin without it. -->
+    <dependency>
+      <groupId>org.jenkins-ci.plugins</groupId>
+      <artifactId>ssh-credentials</artifactId>
+      <optional>true</optional>
     </dependency>
 
     <dependency>
@@ -129,6 +146,10 @@
       <scope>test</scope>
     </dependency>
     <dependency>
+      <!-- Not managed by the Jenkins BOM even at its latest snapshot for
+                 this core line (checked 2026-07) - a small, rarely-updated
+                 plugin that appears to never have been added to BOM
+                 coverage. Pinned by hand, matching internal JSL. -->
       <groupId>org.jenkinsci.plugins</groupId>
       <artifactId>pipeline-model-declarative-agent</artifactId>
       <version>1.1.1</version>

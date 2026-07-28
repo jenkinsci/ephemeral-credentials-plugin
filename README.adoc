@@ -276,6 +276,48 @@ pinned directly, matching what other projects already verified for this
 same core baseline.
 ======
 
+Re-audited 2026-07 against a later BOM snapshot, to check whether any of
+the manual pins below had since become redundant:
+
+* `pipeline-model-declarative-agent`: still not covered, even by the
+  latest `bom-2.462.x` snapshot available at the time
+  (`4228.v0a_71308d905b_`) -- a small, rarely-updated plugin that appears to
+  have never been added to BOM coverage. Still pinned by hand.
+* `jenkins-test-harness.version`: still genuinely required. Dropping the
+  override and letting the parent POM's own default apply
+  (`2573.vd91b_8a_43e019` at the time of checking) reproduces the exact
+  `NoSuchMethodError` this override was originally added to fix -- the
+  parent POM's default doesn't track `jenkins.version` above.
+* Bumping the BOM itself to that latest snapshot was tried and reverted --
+  it pulls in a newer `credentials` plugin whose
+  `UsernamePasswordCredentialsImpl` constructor now declares
+  `throws FormException`, a breaking change for `EphemeralUsernamePassword`.
+  Not worth adopting for no gain, since it still doesn't cover the
+  `pipeline-model-declarative-agent` either way.
+* `lockable-resources` remains a community plugin (`org.6wind.jenkins`)
+  and was never a candidate for BOM coverage.
+
+**`FormException` fixed defensively, without adopting the newer BOM.**
+`EphemeralUsernamePassword.materialize()` now wraps the
+`UsernamePasswordCredentialsImpl` constructor call in
+`try { ... } catch (Exception e) { throw new IllegalStateException(...); }`
+- catching the broad `Exception` type rather than importing and naming
+`Descriptor.FormException` specifically. That's the point: Java only lets
+you catch a checked exception a `try` block could plausibly throw, and our
+*current* `credentials` plugin version doesn't declare `FormException` on
+this constructor at all, so naming it would fail to compile today. `Exception`
+is always a legal catch clause regardless of what the currently-resolved
+dependency version declares, so this same code compiles unchanged against
+both the version we ship against now and a future one that does throw
+`FormException` - confirmed by temporarily bumping the BOM to its latest
+snapshot and compiling against both, then reverting. The other four
+credential-type constructors compiled clean under that newer snapshot too -
+only picked up deprecation warnings (a superseded `PasswordParameterDefinition`
+constructor; `SecretBytes.fromBytes`/`UploadedKeyStoreSource(SecretBytes)`
+in `EphemeralCertificate`/`EphemeralSecretFile`), not compile errors, so
+they're left alone for now - worth revisiting if this project's core
+baseline ever actually moves forward.
+
 The `lockable-resources` and `pipeline-input-step` plugins are declared as
 real (non-test) dependencies, even though no Java code here imports their
 classes -- the `WithEphemeralCredentials.groovy` calls their `lock`/`input`

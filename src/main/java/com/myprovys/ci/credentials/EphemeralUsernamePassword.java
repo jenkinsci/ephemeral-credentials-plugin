@@ -29,7 +29,18 @@ public class EphemeralUsernamePassword extends EphemeralCredentialSpec {
     public Credentials materialize(Map<String, Object> answers) {
         String username = String.valueOf(answers.get("username"));
         String password = String.valueOf(answers.get("password"));
-        return new UsernamePasswordCredentialsImpl(
-                CredentialsScope.GLOBAL, getId(), getDescription(), username, password);
+        try {
+            return new UsernamePasswordCredentialsImpl(
+                    CredentialsScope.GLOBAL, getId(), getDescription(), username, password);
+        } catch (Exception e) {
+            // Newer credentials-plugin releases declare this constructor as
+            // throwing Descriptor.FormException (form-validation feedback
+            // for the "Add Credentials" web UI - not relevant here). Caught
+            // as the broad Exception type, not FormException by name, so
+            // this keeps compiling against older credentials-plugin
+            // releases too, where the constructor doesn't declare throwing
+            // anything at all.
+            throw new IllegalStateException("Failed to build credential '" + getId() + "'", e);
+        }
     }
 }
