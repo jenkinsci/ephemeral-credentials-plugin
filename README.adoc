@@ -1,0 +1,257 @@
+= Ephemeral Credentials Provider
+
+A Jenkins plugin providing:
+
+* `EphemeralCredentialsProvider` - a `CredentialsProvider` that resolves
+  credentials only for Pipeline builds that put something into it themselves.
+  Nothing it holds is ever written to disk - a plain in-memory map, cleared
+  as soon as the owning build finishes.
+* `withEphemeralCredentials(...) { ... }` - a global pipeline step (no
+  `@Library` import needed) that, for each declared credential ID missing
+  from every other store, pauses on `input` to collect it interactively,
+  caches it in the provider above, and then runs its body - so an
+  *unmodified* nested `withCredentials`/`checkout`/etc. inside that body just
+  finds the value.
+
+This exists as a real plugin (not a JSL shared-library class) because
+shared-library `src/` classes are recompiled per build - each build gets its
+own `Class` object and its own copy of any `static` state, so there is no way
+for such a class to act as a genuine cross-build singleton. An `@Extension`
+in a real plugin, by contrast, is loaded once at Jenkins startup and is
+therefore the only way to get one shared, JVM-wide instance.
+
+== Usage
+
+[source,groovy]
+----
+pipeline {
+    agent any
+    stages {
+        stage('deploy') {
+            steps {
+                withEphemeralCredentials([
+                    ephemeralUsernamePassword(id: 'DB_ADMIN', description: 'DB admin login for this deploy'),
+                    ephemeralSecretText(id: 'NEXUS_TOKEN', description: 'Nexus API token')
+                ]) {
+                    withCredentials([usernamePassword(credentialsId: 'DB_ADMIN', usernameVariable: 'U', passwordVariable: 'P')]) {
+                        sh 'run-migration --user "$U" --password "$P"'
+                    }
+                    // an unmodified checkout(credentialsId: 'NEXUS_TOKEN', ...) here would also just work
+                }
+            }
+        }
+    }
+}
+----
+
+If `DB_ADMIN`/`NEXUS_TOKEN` already resolve via a real credentials store
+(global/folder/job-scoped), nothing is prompted - `withEphemeralCredentials`
+checks `CredentialsProvider.findCredentialById` first. Only a genuinely
+missing ID triggers `input`, guarded by a `lock` keyed on
+`<runId>-<credentialId>` so parallel branches or repeated calls within the
+same run don't prompt twice.
+
+=== Pre-warming: collecting credentials early, using them much later
+
+`withEphemeralCredentials` doesn't require its body to do anything - the
+`for` loop that resolves/prompts/caches each declared ID runs regardless of
+what the body contains, and an empty closure is perfectly valid:
+
+[source,groovy]
+----
+pipeline {
+    agent any
+    stages {
+        stage('collect credentials') {
+            steps {
+                // Nothing here needs these IDs yet - this just forces them
+                // to be resolved (and, if missing, prompted for) while
+                // whoever started the build is still around to answer.
+                withEphemeralCredentials([
+                    ephemeralUsernamePassword(id: 'DB_ADMIN', description: 'DB admin login for this deploy'),
+                    ephemeralSecretText(id: 'NEXUS_TOKEN', description: 'Nexus API token')
+                ]) { /* empty */ }
+            }
+        }
+        stage('build') {
+            steps {
+                sh 'make all'   // takes an hour; nobody's watching by the time it's done
+            }
+        }
+        stage('deploy') {
+            steps {
+                // Unmodified - DB_ADMIN/NEXUS_TOKEN are already cached from
+                // the first stage, so nothing pauses here even though this
+                // stage runs long after the human who started the build
+                // walked away.
+                withCredentials([usernamePassword(credentialsId: 'DB_ADMIN', usernameVariable: 'U', passwordVariable: 'P')]) {
+                    sh 'run-migration --user "$U" --password "$P"'
+                }
+            }
+        }
+    }
+}
+----
+
+This is the practical way to avoid a pipeline silently blocking on `input`
+deep inside a long build, minutes or hours after whoever triggered it has
+stopped watching - move the (possibly interactive) resolution to a cheap,
+early, empty-bodied call, and let everything downstream - wrapped or not -
+just find the value already cached for the rest of the run. It's also a
+manual approximation of the `pipeline { options { ... } }` form floated
+earlier in this project's design discussion (resolving declared IDs once
+before any stage runs), buildable today with zero code changes here.
+
+**Caveat worth knowing:** the cache is the in-memory JVM singleton described
+below - it does not survive a controller restart, but a *paused* Pipeline
+build does (that's the whole point of Pipeline's durability model). If
+Jenkins restarts between the early warm-up stage and the later stage that
+actually uses the credential, the build resumes correctly but the cache is
+gone: a later `withEphemeralCredentials` call for the same ID prompts again
+(safe, just an extra interruption), while a later *unmodified* call relying
+solely on the earlier warm-up (no `withEphemeralCredentials` at that point)
+simply won't find the credential at all, since nothing at that later point
+would re-trigger the interactive path. Rare, but real - weigh it against how
+long the gap between warm-up and use is, and how likely a restart is in that
+window.
+
+== What's here
+
+=== `EphemeralCredentialsProvider`
+
+The `@Extension`-registered `CredentialsProvider`. Holds a
+`Map<runExternalizableId, Map<credentialsId, Credentials>>`.
+`getCredentialsInItemGroup(...)` (the method Jenkins' generic credentials
+lookup actually calls in this plugin version - see "API surface" below)
+tries to resolve *which build is asking* via
+`CpsThread.current().getExecution().getOwner().getExecutable()`
+(`CpsRuns.current()`), not via `hudson.model.Executor` - an `Executor` is a
+transient, per-`node`-block resource that changes across parallel branches
+and sequential stages/agents, whereas a `CpsFlowExecution` is anchored to
+the whole build's lifetime and shared by every branch of a `parallel`
+block.
+
+**Discovered limitation, not just a caveat:** that resolution only works
+when the caller is itself CPS-interpreted code (our own
+`WithEphemeralCredentials.groovy`, a shared-library script, the Jenkinsfile
+itself). It does **not** work when the caller is a step's own internal Java
+implementation running off the CPS interpreter thread entirely - confirmed
+empirically against a real embedded Jenkins in
+`WithEphemeralCredentialsTest`: `credentials-binding`'s `withCredentials`
+performs its own `findCredentialById` call from such a thread, where
+`CpsThread.current()` is `null`. When that happens, the provider falls back
+to considering *every* run's cache and lets the caller's own by-ID
+filtering pick the right entry. That's correct as long as two different
+runs aren't concurrently caching different values under the exact same
+literal credential ID at the same time - a real, narrow residual risk you
+should weigh against how likely concurrent builds of the same job are for
+whatever pipeline uses this, not a merely theoretical one.
+
+=== `EphemeralCredentialsRunListener`
+
+`onFinalized`/`onDeleted` cleanup. This is the authoritative cleanup path,
+not a `finally` block in the pipeline script, since a hard-killed build can
+skip the latter.
+
+=== `withEphemeralCredentials` (`WithEphemeralCredentials.groovy` + `WithEphemeralCredentialsGlobalVariable`)
+
+Registered via the `GlobalVariable` extension point, the same mechanism that
+makes `env`/`params`/`currentBuild` available without an import. The actual
+logic ships as a `.groovy` **resource** (not precompiled Java/Groovy) and is
+parsed on demand through the calling script's own `GroovyClassLoader` -
+the same technique `docker-workflow-plugin`'s `DockerDSL` uses for its
+`Docker.groovy` - so it goes through the same CPS transformation as a
+shared-library script, which is what makes its calls to `lock`/`input` safe.
+
+Two non-obvious things this took several iterations against a real embedded
+Jenkins to get right, both worth knowing before touching this file:
+
+* **The calling build's own sandbox status applies to this code too.**
+  Since it's compiled through the *calling* script's classloader, a
+  sandboxed Jenkinsfile makes this code sandboxed as well - every non-step
+  Java call it makes (even into this plugin's own classes) needs an entry in
+  `whitelist.txt` (loaded by `EphemeralCredentialsWhitelist`), or it's
+  rejected with `RejectedAccessException`, the same way `credentials-binding`
+  and `docker-workflow-plugin` ship their own whitelists. This includes
+  things that look like "obviously fine" Jenkins core calls -
+  `currentBuild.rawBuild` itself was rejected during development.
+* **Never hold a live `Run` (or this plugin's own singleton) across a
+  `lock`/`input` pause.** This class sits in the script's binding for the
+  whole build, so CPS's own program-state serialization walks it every time
+  the pipeline pauses. `WorkflowRun` isn't Java-serializable, so an earlier
+  version that stored a `Run` field failed with `NotSerializableException`
+  the moment `input()` paused. The fix: store only the plain
+  `externalizableId` String, and re-resolve `Run.fromExternalizableId(...)`
+  fresh right before each synchronous use, never held across a pause.
+
+=== `ephemeralUsernamePassword` / `ephemeralSecretText` (factories)
+
+Also `GlobalVariable`s, but trivial ones - each returns a precompiled
+`groovy.lang.Closure` that builds an `EphemeralUsernamePassword` /
+`EphemeralSecretText` (both extend `EphemeralCredentialSpec`: an `id`, a
+`description` passed straight through to `input`'s `message`, the `input`
+`ParameterDefinition`s to collect, and how to turn the answers into a
+`Credentials` object). Since these never invoke a pipeline step themselves,
+a plain precompiled `Closure` is fine - no CPS transformation, no whitelist
+entries needed for them.
+
+Adding a new credential type means one more `EphemeralCredentialSpec`
+subclass plus one more tiny factory `GlobalVariable`, following the same
+shape.
+
+== Tests
+
+`WithEphemeralCredentialsTest` runs real declarative pipelines against an
+embedded Jenkins (`JenkinsRule`, JUnit 5 `@WithJenkins`):
+
+* `alreadyRegisteredCredentialIsNeverPrompted` - an ID already resolvable via
+  `SystemCredentialsProvider` is used as-is; no `input` ever appears.
+* `missingCredentialPromptsAndReusesCacheOnSecondCall` - a genuinely missing
+  ID pauses on `input` (submitted programmatically via
+  `InputStepExecution.proceed(Map)`), the submitted value reaches an
+  unmodified nested `withCredentials`, and a second `withEphemeralCredentials`
+  call for the same ID in the same run reuses the cache instead of pausing
+  again.
+
+Run with `mvn test`.
+
+== Build
+
+Standard Jenkins plugin Maven build, via the `org.jenkins-ci.plugins:plugin`
+parent POM:
+
+[source,shell]
+----
+mvn package
+----
+
+Produces `target/ephemeral-credentials-provider.hpi`.
+
+Dependency versions in `pom.xml` target the core version JSL currently
+targets (`jslcus/resources/core-version.txt` = `2.462.3`, set as the
+`jenkins.version` property). Most plugin versions come from importing
+`io.jenkins.tools.bom:bom-2.462.x` (a mutually-consistent set for this exact
+core line - resolving `workflow-cps`/`pipeline-input-step`/
+`lockable-resources`'s differing transitive wants piecemeal repeatedly hit
+the parent POM's `RequireUpperBoundDeps` enforcer rule during development;
+importing the BOM was much less fragile than pinning each conflict by hand
+as it surfaced). `lockable-resources` (`org.6wind.jenkins`, a community
+plugin outside that BOM) and `jenkins-test-harness` (pinned via the
+`jenkins-test-harness.version` property the parent POM requires) are
+pinned directly, matching what jslcus already verified for this same core
+baseline.
+
+`lockable-resources` and `pipeline-input-step` are declared as real
+(non-test) dependencies even though no Java code here imports their
+classes - `WithEphemeralCredentials.groovy` calls their `lock`/`input`
+steps by name, and declaring them here is what makes maven-hpi-plugin
+record them as required plugin dependencies in the manifest, so Jenkins
+refuses to load this plugin without them installed.
+
+Note on API surface: this version of `credentials-plugin` does not declare
+`getCredentials(...)` as abstract - it's kept only as a deprecated
+compatibility shim. The real extension point subclasses must override is
+`getCredentialsInItemGroup(Class, ItemGroup, org.springframework.security
+.core.Authentication, List<DomainRequirement>)`, which is what this plugin
+does. Confirmed by decompiling the resolved plugin jar during development;
+worth re-checking if the `credentials` dependency version is ever bumped.

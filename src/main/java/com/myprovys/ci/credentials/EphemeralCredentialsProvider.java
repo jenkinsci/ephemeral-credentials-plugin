@@ -1,0 +1,134 @@
+package com.myprovys.ci.credentials;
+
+import com.cloudbees.plugins.credentials.Credentials;
+import com.cloudbees.plugins.credentials.CredentialsProvider;
+import com.cloudbees.plugins.credentials.domains.DomainRequirement;
+import edu.umd.cs.findbugs.annotations.CheckForNull;
+import edu.umd.cs.findbugs.annotations.NonNull;
+import edu.umd.cs.findbugs.annotations.Nullable;
+import hudson.Extension;
+import hudson.ExtensionList;
+import hudson.model.ItemGroup;
+import hudson.model.Run;
+import org.jenkinsci.plugins.workflow.cps.CpsThread;
+import org.springframework.security.core.Authentication;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * A {@link CredentialsProvider} that only ever answers with credentials that
+ * some currently executing Pipeline build itself put into it. Everything is
+ * held in a plain in-memory map, keyed by {@link Run#getExternalizableId()};
+ * nothing here is {@code Saveable} and nothing is ever written to disk.
+ *
+ * <p>This class is loaded once, as an ordinary {@code @Extension}, at Jenkins
+ * startup - unlike a shared-library {@code src/} class, which is recompiled
+ * per build and therefore cannot hold state shared across builds. That is
+ * the whole reason this exists as a real plugin instead of living in JSL.
+ *
+ * <p>{@link #getCredentialsInItemGroup} is invoked by Jenkins' generic credentials
+ * lookup from many unrelated contexts (job-config dropdowns, other plugins
+ * enumerating what's available, freestyle builds, etc.), not just from a
+ * deliberate request for a specific ID. It therefore stays purely passive -
+ * it never prompts for anything, it only serves what has already been
+ * {@link #put} into it. Deciding when to interactively resolve a missing
+ * credential is the caller's job (see {@code WithEphemeralCredentials.groovy}).
+ *
+ * <h2>Run correlation, and a discovered limitation</h2>
+ * <p>Because a single Run's Pipeline script can be executing on several
+ * different {@code node}/{@code agent} blocks at once (parallel branches)
+ * or move between agents across sequential stages, there is no stable
+ * {@code hudson.model.Executor} to correlate against. What is stable for
+ * the whole life of the build is its {@code FlowExecutionOwner}, reachable
+ * from whichever {@link CpsThread} happens to be running the code that
+ * triggered this lookup - see {@link CpsRuns#current()}.
+ *
+ * <p>That resolves correctly when the caller is itself CPS-interpreted code
+ * (our own {@code WithEphemeralCredentials.groovy}, a shared-library script,
+ * the Jenkinsfile itself). It does <b>not</b> resolve when the caller is a
+ * step's own internal Java implementation running off the CPS interpreter
+ * thread entirely - confirmed empirically against a real embedded Jenkins:
+ * {@code credentials-binding}'s {@code withCredentials} performs its own
+ * {@code findCredentialById} call from such a thread, where
+ * {@code CpsThread.current()} is {@code null}. In that case we fall back to
+ * considering every run's cache and let the caller's own by-ID filtering
+ * (e.g. {@code CredentialsProvider.findCredentialById}) pick the right
+ * entry. This is correct as long as two different runs aren't concurrently
+ * caching different values under the exact same literal credential ID at the
+ * same time - a real, narrow residual risk, not a theoretical one, worth
+ * weighing against how likely concurrent builds of the same job are for
+ * whatever pipeline uses this.
+ */
+@Extension
+public class EphemeralCredentialsProvider extends CredentialsProvider {
+
+    private final Map<String, Map<String, Credentials>> byRun = new ConcurrentHashMap<>();
+
+    public static EphemeralCredentialsProvider get() {
+        return ExtensionList.lookupSingleton(EphemeralCredentialsProvider.class);
+    }
+
+    @NonNull
+    @Override
+    public <C extends Credentials> List<C> getCredentialsInItemGroup(@NonNull Class<C> type,
+                                                                       @NonNull ItemGroup itemGroup,
+                                                                       @Nullable Authentication authentication,
+                                                                       @NonNull List<DomainRequirement> domainRequirements) {
+        Run<?, ?> run = CpsRuns.current();
+        Collection<Map<String, Credentials>> candidates;
+        if (run != null) {
+            Map<String, Credentials> forRun = byRun.get(run.getExternalizableId());
+            candidates = forRun == null ? Collections.emptyList() : Collections.singletonList(forRun);
+        } else {
+            // See the class javadoc: can't identify the run, so consider
+            // every run's cache and let by-ID filtering downstream sort it
+            // out.
+            candidates = byRun.values();
+        }
+
+        List<C> result = new ArrayList<>();
+        for (Map<String, Credentials> forRun : candidates) {
+            for (Credentials candidate : forRun.values()) {
+                if (type.isInstance(candidate)) {
+                    result.add(type.cast(candidate));
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Caches {@code credentials} under {@code credentialsId}, visible only to
+     * lookups made from within {@code run}'s own Pipeline execution.
+     */
+    public void put(@NonNull Run<?, ?> run, @NonNull String credentialsId, @NonNull Credentials credentials) {
+        byRun.computeIfAbsent(run.getExternalizableId(), key -> new ConcurrentHashMap<>())
+                .put(credentialsId, credentials);
+    }
+
+    @CheckForNull
+    public Credentials find(@NonNull Run<?, ?> run, @NonNull String credentialsId) {
+        Map<String, Credentials> forRun = byRun.get(run.getExternalizableId());
+        return forRun == null ? null : forRun.get(credentialsId);
+    }
+
+    public boolean has(@NonNull Run<?, ?> run, @NonNull String credentialsId) {
+        return find(run, credentialsId) != null;
+    }
+
+    /**
+     * Drops every credential cached for {@code run}. Called by
+     * {@link EphemeralCredentialsRunListener} once the build is finalized or
+     * deleted, regardless of how it ended - this is the authoritative
+     * cleanup path, not any {@code finally} block in the pipeline script,
+     * since a hard-killed build can skip the latter entirely.
+     */
+    public void forget(@NonNull Run<?, ?> run) {
+        byRun.remove(run.getExternalizableId());
+    }
+}

@@ -1,0 +1,6 @@
+<?jelly escape-by-default='true'?>
+<div>
+    Run-scoped, in-memory <code>CredentialsProvider</code>: resolves credentials
+    only for the Pipeline build currently executing, and only what that build
+    itself cached. Nothing it holds is ever written to disk.
+</div>
