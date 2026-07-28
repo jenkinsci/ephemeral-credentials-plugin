@@ -73,6 +73,7 @@ class WithEphemeralCredentials implements Serializable {
                         List params = spec.inputParameters()
                         String message = spec.description ?: "Provide credential '${spec.id}'"
                         try {
+                            script.echo("Waiting for input of credential '${spec.id}'" + (spec.description ? ": " + spec.description : ""))
                             def raw = script.input(message: message, parameters: params)
                             Map values = params.size() == 1 ? [(params[0].name): raw] : raw
                             EphemeralCredentialsProvider.get().put(Run.fromExternalizableId(runId), spec.id, spec.materialize(values))
