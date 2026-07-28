@@ -14,10 +14,13 @@ import java.util.Map;
 
 /**
  * Secret file. There's no clean way to have {@code input} collect a genuine
- * file upload here - {@code FileParameterDefinition} writes the uploaded
+ * file upload here -- {@code FileParameterDefinition} writes the uploaded
  * file to disk as part of its own normal handling, in direct tension with
- * this plugin's "never persisted" design - so the value is collected as
- * pasted base64-encoded text instead.
+ * this plugin's "never persisted" design -- so the value is collected as
+ * pasted base64-encoded text and served from memory instead.
+ *
+ * @see FileCredentialsImpl
+ * @see EphemeralCredentialSpec
  */
 public class EphemeralSecretFile extends EphemeralCredentialSpec {
 

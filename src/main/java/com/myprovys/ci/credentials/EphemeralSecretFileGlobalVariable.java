@@ -11,6 +11,9 @@ import java.util.Map;
 /**
  * Registers {@code ephemeralSecretFile(id: ..., description: ..., fileName: ...)}
  * - {@code fileName} is optional and defaults to {@code id}.
+ *
+ * @see EphemeralSecretFile
+ * @see EphemeralCredentialSpec
  */
 @Extension
 public class EphemeralSecretFileGlobalVariable extends GlobalVariable {

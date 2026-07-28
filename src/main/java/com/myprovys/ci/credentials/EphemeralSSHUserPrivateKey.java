@@ -13,17 +13,20 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * SSH Username with private key. Unlike the other credential types, this one
+ * <p>SSH Username with private key. Unlike the other credential types, this one
  * pulls in a plugin (<a href="https://plugins.jenkins.io/ssh-credentials/">SSH
  * Credentials</a>) beyond what this plugin otherwise needs - so it's declared
  * as an {@code optional} Maven/HPI dependency: installations that never use
- * {@code ephemeralSSHUserPrivateKey} don't need it installed at all.
+ * {@code ephemeralSSHUserPrivateKey} don't need it installed at all.</p>
  *
  * <p>The constructor deliberately touches {@link BasicSSHUserPrivateKey} (a
  * class literal is enough to force resolution) so that a missing plugin
  * fails immediately, with a clear message, at the point the pipeline author
  * declares this spec - not deep inside {@link #materialize} after a human
- * has already answered an {@code input} prompt for nothing.
+ * has already answered an {@code input} prompt for nothing.</p>
+ *
+ * @see EphemeralCredentialSpec
+ * @see BasicSSHUserPrivateKey
  */
 public class EphemeralSSHUserPrivateKey extends EphemeralCredentialSpec {
 

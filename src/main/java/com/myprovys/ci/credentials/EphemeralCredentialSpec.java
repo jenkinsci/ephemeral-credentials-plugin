@@ -7,16 +7,17 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Describes one credential a {@code withEphemeralCredentials} block may need
+ * <p>Describes one credential a {@code withEphemeralCredentials} block may need
  * to resolve interactively: which {@code input} parameters to ask the user
  * for, and how to turn the collected answers into a concrete
  * {@link Credentials} object. Concrete subtypes are constructed from pipeline
  * script via the matching factory global variable, e.g.
  * {@code ephemeralUsernamePassword(id: 'FOO', description: '...')} - the same
- * ergonomics as {@code usernamePassword(...)} inside {@code withCredentials}.
+ * ergonomics as {@code usernamePassword(...)} inside {@code withCredentials}.</p>
  *
  * <p>Plain data/logic, never itself invokes a pipeline step, so unlike
- * {@code WithEphemeralCredentials} it needs no special CPS treatment.
+ * {@code WithEphemeralCredentials} it needs no special CPS treatment
+ * and is {@link Serializable}.</p>
  */
 public abstract class EphemeralCredentialSpec implements Serializable {
 

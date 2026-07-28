@@ -5,13 +5,16 @@ import hudson.model.Run;
 import hudson.model.listeners.RunListener;
 
 /**
- * Authoritative cleanup backstop for {@link EphemeralCredentialsProvider}.
+ * Authoritative cleanup backstop for {@link EphemeralCredentialsProvider}:
  *
- * <p>{@code onFinalized} fires for every way a build can end - success,
- * failure, or a hard kill/abort - independently of whether the Pipeline
- * script itself got to run its own {@code finally} block. {@code onDeleted}
- * covers a build record being removed later. Either way, nothing this
- * plugin cached for that build should outlive it.
+ * <ul>
+ *     <li>{@code onFinalized} fires for every way a build can end -- success,
+ * failure, or a hard kill/abort -- independently of whether the Pipeline
+ * script itself got to run its own {@code finally} block.</li>
+ *     <li>{@code onDeleted} covers a build record being removed later.</li>
+ * </ul>
+ *
+ * Either way, nothing this plugin has cached for that build should outlive it.
  */
 @Extension
 public class EphemeralCredentialsRunListener extends RunListener<Run<?, ?>> {

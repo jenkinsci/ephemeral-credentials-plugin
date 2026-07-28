@@ -19,8 +19,12 @@ import java.util.Map;
  * upload - see that class's javadoc for why. Decoded straight into a
  * {@link SecretBytes} and handed to {@code UploadedKeyStoreSource}'s
  * {@code SecretBytes}-accepting constructor, rather than its String
- * overload, which does its own base64 handling internally - passing already
- * -decoded bytes avoids any ambiguity about what that overload expects.
+ * overload, which does its own base64 handling internally - passing the
+ * already-decoded bytes avoids any ambiguity about what that overload
+ * expects.
+ *
+ * @see CertificateCredentialsImpl
+ * @see EphemeralCredentialSpec
  */
 public class EphemeralCertificate extends EphemeralCredentialSpec {
 

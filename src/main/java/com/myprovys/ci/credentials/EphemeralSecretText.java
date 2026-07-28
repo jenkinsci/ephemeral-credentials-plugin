@@ -10,6 +10,12 @@ import java.util.List;
 import java.util.Map;
 import org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl;
 
+/**
+ * Represents ephemeral secret text credential.
+ *
+ * @see EphemeralCredentialSpec
+ * @see StringCredentialsImpl
+ */
 public class EphemeralSecretText extends EphemeralCredentialSpec {
 
     private static final long serialVersionUID = 1L;

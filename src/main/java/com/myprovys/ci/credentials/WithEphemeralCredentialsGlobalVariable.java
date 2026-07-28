@@ -12,9 +12,9 @@ import org.jenkinsci.plugins.workflow.cps.CpsScript;
 import org.jenkinsci.plugins.workflow.cps.GlobalVariable;
 
 /**
- * Registers {@code withEphemeralCredentials} as a global pipeline step,
+ * <p>Registers {@code withEphemeralCredentials} as a global pipeline step,
  * available in any Pipeline job once this plugin is installed - no
- * {@code @Library} import needed, same as {@code lock} or {@code input}.
+ * {@code @Library} import needed, same as {@code lock} or {@code input}.</p>
  *
  * <p>The actual implementation ({@code WithEphemeralCredentials.groovy})
  * ships as a plugin resource, not precompiled, and is parsed on demand
@@ -27,7 +27,10 @@ import org.jenkinsci.plugins.workflow.cps.GlobalVariable;
  * directly to {@code parseClass}, rather than relying on the CPS
  * classloader's {@code loadClass} to independently discover a {@code .groovy}
  * resource across plugin boundaries - that discovery path isn't guaranteed
- * to search other plugins' jars.
+ * to search other plugins' jars.</p>
+ *
+ * @see EphemeralCredentialSpec
+ * @see WithEphemeralCredentials
  */
 @Extension
 public class WithEphemeralCredentialsGlobalVariable extends GlobalVariable {

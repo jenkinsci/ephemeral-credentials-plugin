@@ -29,6 +29,11 @@ import org.jenkinsci.plugins.workflow.cps.CpsScript
  * {@code input} and {@code lock} steps provided by "pipeline-input-step"
  * and "lockable-resources" plugins respectively (or some mocks that
  * follow their API).</p>
+ *
+ * <p>It is accompanied in plugin sources with a {@code whitelist.txt} file
+ * to permit use of methods and classes that it refers to even in sandboxed
+ * pipelines, see {@link EphemeralCredentialsWhitelist} class for technical
+ * details.</p>
  */
 class WithEphemeralCredentials implements Serializable {
 

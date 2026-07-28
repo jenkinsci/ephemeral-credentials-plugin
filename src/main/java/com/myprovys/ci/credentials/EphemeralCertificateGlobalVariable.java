@@ -10,6 +10,9 @@ import java.util.Map;
 
 /**
  * Registers {@code ephemeralCertificate(id: ..., description: ...)}.
+ *
+ * @see EphemeralCertificate
+ * @see EphemeralCredentialSpec
  */
 @Extension
 public class EphemeralCertificateGlobalVariable extends GlobalVariable {

@@ -15,6 +15,9 @@ import java.util.Map;
  * {@link EphemeralSSHUserPrivateKey}'s constructor throws a clear
  * {@link IllegalStateException} that surfaces as a normal pipeline failure -
  * no try/catch needed here.
+ *
+ * @see EphemeralCredentialSpec
+ * @see EphemeralSSHUserPrivateKey
  */
 @Extension
 public class EphemeralSSHUserPrivateKeyGlobalVariable extends GlobalVariable {

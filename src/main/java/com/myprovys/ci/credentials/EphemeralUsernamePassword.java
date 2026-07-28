@@ -10,6 +10,12 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Two strings: a username and a password.
+ *
+ * @see EphemeralCredentialSpec
+ * @see UsernamePasswordCredentialsImpl
+ */
 public class EphemeralUsernamePassword extends EphemeralCredentialSpec {
 
     private static final long serialVersionUID = 1L;

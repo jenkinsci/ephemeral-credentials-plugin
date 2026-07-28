@@ -8,15 +8,18 @@ import org.jenkinsci.plugins.workflow.cps.CpsScript;
 import org.jenkinsci.plugins.workflow.cps.GlobalVariable;
 
 /**
- * Registers {@code ephemeralUsernamePassword(id: ..., description: ...)} as
+ * <p>Registers {@code ephemeralUsernamePassword(id: ..., description: ...)} as
  * a global factory function, usable inside a {@code withEphemeralCredentials}
  * spec list - the same DSL ergonomics as {@code usernamePassword(...)} inside
  * {@code withCredentials}, just producing an {@link EphemeralUsernamePassword}
- * instead of binding env vars directly.
+ * instead of binding env vars directly.</p>
  *
  * <p>Unlike {@code WithEphemeralCredentials}, this never invokes a pipeline
  * step itself - it just builds a plain data object - so a precompiled Java
- * {@link Closure} is fine; no CPS transformation is needed here.
+ * {@link Closure} is fine; no CPS transformation is needed here.</p>
+ *
+ * @see EphemeralCredentialSpec
+ * @see EphemeralUsernamePassword
  */
 @Extension
 public class EphemeralUsernamePasswordGlobalVariable extends GlobalVariable {

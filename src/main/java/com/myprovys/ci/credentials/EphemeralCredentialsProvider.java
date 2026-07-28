@@ -20,15 +20,15 @@ import org.jenkinsci.plugins.workflow.cps.CpsThread;
 import org.springframework.security.core.Authentication;
 
 /**
- * A {@link CredentialsProvider} that only ever answers with credentials that
+ * <p>A {@link CredentialsProvider} that only ever answers with credentials that
  * some currently executing Pipeline build itself put into it. Everything is
  * held in a plain in-memory map, keyed by {@link Run#getExternalizableId()};
- * nothing here is {@code Saveable} and nothing is ever written to disk.
+ * nothing here is {@code Saveable} and nothing is ever written to disk.</p>
  *
  * <p>This class is loaded once, as an ordinary {@code @Extension}, at Jenkins
  * startup - unlike a shared-library {@code src/} class, which is recompiled
  * per build and therefore cannot hold state shared across builds. That is
- * the whole reason this exists as a real plugin instead of living in JSL.
+ * the whole reason this exists as a real plugin instead of living in a JSL.</p>
  *
  * <p>{@link #getCredentialsInItemGroup} is invoked by Jenkins' generic credentials
  * lookup from many unrelated contexts (job-config dropdowns, other plugins
@@ -36,7 +36,8 @@ import org.springframework.security.core.Authentication;
  * deliberate request for a specific ID. It therefore stays purely passive -
  * it never prompts for anything, it only serves what has already been
  * {@link #put} into it. Deciding when to interactively resolve a missing
- * credential is the caller's job (see {@code WithEphemeralCredentials.groovy}).
+ * credential is the caller's job (see {@code WithEphemeralCredentials.groovy}
+ * step).</p>
  *
  * <h2>Run correlation, and a discovered limitation</h2>
  * <p>Because a single Run's Pipeline script can be executing on several
@@ -45,7 +46,7 @@ import org.springframework.security.core.Authentication;
  * {@code hudson.model.Executor} to correlate against. What is stable for
  * the whole life of the build is its {@code FlowExecutionOwner}, reachable
  * from whichever {@link CpsThread} happens to be running the code that
- * triggered this lookup - see {@link CpsRuns#current()}.
+ * triggered this lookup - see {@link CpsRuns#current()}.</p>
  *
  * <p>That resolves correctly when the caller is itself CPS-interpreted code
  * (our own {@code WithEphemeralCredentials.groovy}, a shared-library script,
@@ -61,7 +62,7 @@ import org.springframework.security.core.Authentication;
  * caching different values under the exact same literal credential ID at the
  * same time - a real, narrow residual risk, not a theoretical one, worth
  * weighing against how likely concurrent builds of the same job are for
- * whatever pipeline uses this.
+ * whatever pipeline uses this.</p>
  */
 @Extension
 public class EphemeralCredentialsProvider extends CredentialsProvider {

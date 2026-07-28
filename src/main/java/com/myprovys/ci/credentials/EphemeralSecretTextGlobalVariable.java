@@ -11,6 +11,9 @@ import org.jenkinsci.plugins.workflow.cps.GlobalVariable;
  * Registers {@code ephemeralSecretText(id: ..., description: ...)} as a
  * global factory function - see {@link EphemeralUsernamePasswordGlobalVariable}
  * for the general shape and why a precompiled Closure is fine here.
+ *
+ * @see EphemeralSecretText
+ * @see EphemeralCredentialSpec
  */
 @Extension
 public class EphemeralSecretTextGlobalVariable extends GlobalVariable {
