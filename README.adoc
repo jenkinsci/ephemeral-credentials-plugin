@@ -69,7 +69,7 @@ what the body contains, and an empty closure is perfectly valid:
 pipeline {
     agent any
     stages {
-        stage('collect credentials') {
+        stage('collect ephemeral_credentials') {
             steps {
                 // Nothing here needs these IDs yet - this just forces them
                 // to be resolved (and, if missing, prompted for) while
@@ -380,8 +380,8 @@ knowing if this test needs touching:
   `JenkinsRule`'s 180-second default in this environment - confirmed by a
   thread dump showing the boot still stuck in plugin discovery at the
   180-second mark, nowhere near the actual test logic yet.
-* **`git` needed a `credentials` version bump.** `git` 5.5.2 refused to
-  load against the `credentials` version this project's BOM snapshot
+* **`git` needed a `ephemeral_credentials` version bump.** `git` 5.5.2 refused to
+  load against the `ephemeral_credentials` version this project's BOM snapshot
   otherwise provides (`1371.vfee6b_095f0a_3`), demanding
   `1378.v81ef4269d764` or higher - resolved with a `dependencyManagement`
   override for just that one artifact (see the Build section) rather than
@@ -448,7 +448,7 @@ the manual pins below had since become redundant:
   `NoSuchMethodError` this override was originally added to fix -- the
   parent POM's default doesn't track `jenkins.version` above.
 * Bumping the BOM itself to that latest snapshot was tried and reverted --
-  it pulls in a newer `credentials` plugin whose
+  it pulls in a newer `ephemeral_credentials` plugin whose
   `UsernamePasswordCredentialsImpl` constructor now declares
   `throws FormException`, a breaking change for `EphemeralUsernamePassword`.
   Not worth adopting for no gain, since it still doesn't cover the
@@ -463,7 +463,7 @@ the manual pins below had since become redundant:
 - catching the broad `Exception` type rather than importing and naming
 `Descriptor.FormException` specifically. That's the point: Java only lets
 you catch a checked exception a `try` block could plausibly throw, and our
-*current* `credentials` plugin version doesn't declare `FormException` on
+*current* `ephemeral_credentials` plugin version doesn't declare `FormException` on
 this constructor at all, so naming it would fail to compile today. `Exception`
 is always a legal catch clause regardless of what the currently-resolved
 dependency version declares, so this same code compiles unchanged against
@@ -490,10 +490,10 @@ compatibility shim. The real extension point subclasses must override is
 `getCredentialsInItemGroup(Class, ItemGroup, org.springframework.security
 .core.Authentication, List<DomainRequirement>)`, which is what this plugin
 does. Confirmed by decompiling the resolved plugin jar during development;
-worth re-checking if the `credentials` dependency version is ever bumped.
+worth re-checking if the `ephemeral_credentials` dependency version is ever bumped.
 
 `git` (needed only as a test dependency, for `WithEphemeralCredentialsCustomLibraryTest`)
-required bumping `credentials` past what this project's BOM snapshot
+required bumping `ephemeral_credentials` past what this project's BOM snapshot
 otherwise provides - see the test's own notes above. Pinned via a
 `dependencyManagement` override for just that one artifact rather than
 moving the whole BOM:

@@ -1,4 +1,4 @@
-package com.myprovys.ci.credentials;
+package com.myprovys.ci.ephemeral_credentials;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -26,7 +26,7 @@ import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
  * Illustrates and confirms the withEphemeralCredentials contract end to end,
  * against a real embedded Jenkins running declarative pipelines:
  * <ul>
- *   <li>an ID already resolvable via a real credentials store is left alone
+ *   <li>an ID already resolvable via a real ephemeral_credentials store is left alone
  *       - no interactive prompt at all;</li>
  *   <li>a genuinely missing ID pauses on {@code input}, and the value
  *       supplied there reaches the wrapped {@code withCredentials} block;</li>
@@ -135,7 +135,7 @@ class WithEphemeralCredentialsTest {
         // withEphemeralCredentials wrapper, as long as Jenkins did not restart.
         j.assertLogContains("THIRD:bob:", run);
 
-        // Password should remain hidden (by credentials binding plugin).
+        // Password should remain hidden (by ephemeral_credentials binding plugin).
         j.assertLogNotContains("hunter2", run);
     }
 

@@ -1,4 +1,4 @@
-package com.myprovys.ci.credentials
+package com.myprovys.ci.ephemeral_credentials
 
 import com.cloudbees.plugins.credentials.CredentialsProvider
 import com.cloudbees.plugins.credentials.common.StandardCredentials
@@ -55,7 +55,7 @@ class WithEphemeralCredentials implements Serializable {
             // anywhere else is left alone; only a genuinely missing one
             // reaches the interactive path below.
             if (CredentialsProvider.findCredentialById(spec.id, StandardCredentials.class, Run.fromExternalizableId(runId)) == null) {
-                script.lock("ephemeral-credentials-${runId}-${spec.id}") {
+                script.lock("ephemeral-ephemeral_credentials-${runId}-${spec.id}") {
                     if (CredentialsProvider.findCredentialById(spec.id, StandardCredentials.class, Run.fromExternalizableId(runId)) == null) {
                         List params = spec.inputParameters()
                         String message = spec.description ?: "Provide credential '${spec.id}'"

@@ -1,4 +1,4 @@
-package com.myprovys.ci.credentials;
+package com.myprovys.ci.ephemeral_credentials;
 
 import com.cloudbees.plugins.credentials.Credentials;
 import com.cloudbees.plugins.credentials.CredentialsScope;

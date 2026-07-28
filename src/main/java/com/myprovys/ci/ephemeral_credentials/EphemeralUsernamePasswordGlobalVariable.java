@@ -1,4 +1,4 @@
-package com.myprovys.ci.credentials;
+package com.myprovys.ci.ephemeral_credentials;
 
 import edu.umd.cs.findbugs.annotations.NonNull;
 import groovy.lang.Closure;

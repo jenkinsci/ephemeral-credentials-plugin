@@ -2,7 +2,7 @@ package com.example.jsl
 
 import com.cloudbees.plugins.credentials.Credentials
 import com.cloudbees.plugins.credentials.CredentialsScope
-import com.myprovys.ci.credentials.EphemeralCredentialSpec
+import com.myprovys.ci.ephemeral_credentials.EphemeralCredentialSpec
 import hudson.model.ParameterDefinition
 import hudson.model.PasswordParameterDefinition
 import hudson.util.Secret

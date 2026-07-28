@@ -1,4 +1,4 @@
-package com.myprovys.ci.credentials;
+package com.myprovys.ci.ephemeral_credentials;
 
 import com.cloudbees.plugins.credentials.Credentials;
 import com.cloudbees.plugins.credentials.CredentialsProvider;
@@ -20,7 +20,7 @@ import org.jenkinsci.plugins.workflow.cps.CpsThread;
 import org.springframework.security.core.Authentication;
 
 /**
- * <p>A {@link CredentialsProvider} that only ever answers with credentials that
+ * <p>A {@link CredentialsProvider} that only ever answers with ephemeral_credentials that
  * some currently executing Pipeline build itself put into it. Everything is
  * held in a plain in-memory map, keyed by {@link Run#getExternalizableId()};
  * nothing here is {@code Saveable} and nothing is ever written to disk.</p>
@@ -30,7 +30,7 @@ import org.springframework.security.core.Authentication;
  * per build and therefore cannot hold state shared across builds. That is
  * the whole reason this exists as a real plugin instead of living in a JSL.</p>
  *
- * <p>{@link #getCredentialsInItemGroup} is invoked by Jenkins' generic credentials
+ * <p>{@link #getCredentialsInItemGroup} is invoked by Jenkins' generic ephemeral_credentials
  * lookup from many unrelated contexts (job-config dropdowns, other plugins
  * enumerating what's available, freestyle builds, etc.), not just from a
  * deliberate request for a specific ID. It therefore stays purely passive -
@@ -53,7 +53,7 @@ import org.springframework.security.core.Authentication;
  * the Jenkinsfile itself). It does <b>not</b> resolve when the caller is a
  * step's own internal Java implementation running off the CPS interpreter
  * thread entirely - confirmed empirically against a real embedded Jenkins:
- * {@code credentials-binding}'s {@code withCredentials} performs its own
+ * {@code ephemeral_credentials-binding}'s {@code withCredentials} performs its own
  * {@code findCredentialById} call from such a thread, where
  * {@code CpsThread.current()} is {@code null}. In that case we fall back to
  * considering every run's cache and let the caller's own by-ID filtering
@@ -104,7 +104,7 @@ public class EphemeralCredentialsProvider extends CredentialsProvider {
     }
 
     /**
-     * Caches {@code credentials} under {@code credentialsId}, visible only to
+     * Caches {@code ephemeral_credentials} under {@code credentialsId}, visible only to
      * lookups made from within {@code run}'s own Pipeline execution.
      */
     public void put(@NonNull Run<?, ?> run, @NonNull String credentialsId, @NonNull Credentials credentials) {

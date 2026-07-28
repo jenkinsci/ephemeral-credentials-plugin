@@ -1,4 +1,4 @@
-package com.myprovys.ci.credentials;
+package com.myprovys.ci.ephemeral_credentials;
 
 import static org.junit.Assert.assertEquals;
 
@@ -29,7 +29,7 @@ import org.jvnet.hudson.test.JenkinsRule;
  * factory function in an ordinary (trusted, global) shared library instead.
  *
  * <p>The library content lives under {@code src/test/resources/com/myprovys/
- * ci/credentials/{vars,src}/} as genuine {@code .groovy} files (not embedded
+ * ci/ephemeral_credentials/{vars,src}/} as genuine {@code .groovy} files (not embedded
  * Java string literals), copied into a throwaway local git repo and loaded
  * the same way a real Jenkins controller would load a globally-configured
  * library. It defines:

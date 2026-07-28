@@ -54,13 +54,13 @@
       </dependency>
 
       <!-- git 5.5.2 (needed for WithEphemeralCredentialsCustomLibraryTest)
-               requires credentials >= 1378.v81ef4269d764, newer than what
+               requires ephemeral_credentials >= 1378.v81ef4269d764, newer than what
                this BOM snapshot provides (1371.vfee6b_095f0a_3) - overridden
                here rather than bumping the whole BOM. Verified safe: this is
                the exact version this project originally pinned before
                switching to BOM management, and predates the FormException
                change on UsernamePasswordCredentialsImpl's constructor that
-               only appeared in a much later credentials release (see
+               only appeared in a much later ephemeral_credentials release (see
                EphemeralUsernamePassword's defensive catch for that). -->
       <dependency>
         <groupId>org.jenkins-ci.plugins</groupId>

@@ -1,27 +1,31 @@
-package com.myprovys.ci.credentials;
+package com.myprovys.ci.ephemeral_credentials;
 
 import edu.umd.cs.findbugs.annotations.NonNull;
 import groovy.lang.Closure;
 import hudson.Extension;
-import java.util.Map;
 import org.jenkinsci.plugins.workflow.cps.CpsScript;
 import org.jenkinsci.plugins.workflow.cps.GlobalVariable;
 
+import java.util.Map;
+
 /**
- * Registers {@code ephemeralSecretText(id: ..., description: ...)} as a
- * global factory function - see {@link EphemeralUsernamePasswordGlobalVariable}
- * for the general shape and why a precompiled Closure is fine here.
+ * Registers {@code ephemeralSSHUserPrivateKey(id: ..., description: ...)} -
+ * see {@link EphemeralUsernamePasswordGlobalVariable} for the general shape.
+ * If the optional "SSH Credentials" plugin isn't installed,
+ * {@link EphemeralSSHUserPrivateKey}'s constructor throws a clear
+ * {@link IllegalStateException} that surfaces as a normal pipeline failure -
+ * no try/catch needed here.
  *
- * @see EphemeralSecretText
  * @see EphemeralCredentialSpec
+ * @see EphemeralSSHUserPrivateKey
  */
 @Extension
-public class EphemeralSecretTextGlobalVariable extends GlobalVariable {
+public class EphemeralSSHUserPrivateKeyGlobalVariable extends GlobalVariable {
 
     @NonNull
     @Override
     public String getName() {
-        return "ephemeralSecretText";
+        return "ephemeralSSHUserPrivateKey";
     }
 
     @NonNull
@@ -30,7 +34,7 @@ public class EphemeralSecretTextGlobalVariable extends GlobalVariable {
         return new Closure<EphemeralCredentialSpec>(script) {
             @SuppressWarnings("unused")
             public EphemeralCredentialSpec doCall(Map<String, Object> args) {
-                return new EphemeralSecretText(
+                return new EphemeralSSHUserPrivateKey(
                         String.valueOf(args.get("id")),
                         args.get("description") == null ? null : String.valueOf(args.get("description")));
             }

@@ -1,4 +1,4 @@
-package com.myprovys.ci.credentials;
+package com.myprovys.ci.ephemeral_credentials;
 
 import edu.umd.cs.findbugs.annotations.NonNull;
 import groovy.lang.Closure;
@@ -9,18 +9,19 @@ import org.jenkinsci.plugins.workflow.cps.GlobalVariable;
 import java.util.Map;
 
 /**
- * Registers {@code ephemeralCertificate(id: ..., description: ...)}.
+ * Registers {@code ephemeralSecretFile(id: ..., description: ..., fileName: ...)}
+ * - {@code fileName} is optional and defaults to {@code id}.
  *
- * @see EphemeralCertificate
+ * @see EphemeralSecretFile
  * @see EphemeralCredentialSpec
  */
 @Extension
-public class EphemeralCertificateGlobalVariable extends GlobalVariable {
+public class EphemeralSecretFileGlobalVariable extends GlobalVariable {
 
     @NonNull
     @Override
     public String getName() {
-        return "ephemeralCertificate";
+        return "ephemeralSecretFile";
     }
 
     @NonNull
@@ -29,9 +30,10 @@ public class EphemeralCertificateGlobalVariable extends GlobalVariable {
         return new Closure<EphemeralCredentialSpec>(script) {
             @SuppressWarnings("unused")
             public EphemeralCredentialSpec doCall(Map<String, Object> args) {
-                return new EphemeralCertificate(
+                return new EphemeralSecretFile(
                         String.valueOf(args.get("id")),
-                        args.get("description") == null ? null : String.valueOf(args.get("description")));
+                        args.get("description") == null ? null : String.valueOf(args.get("description")),
+                        args.get("fileName") == null ? null : String.valueOf(args.get("fileName")));
             }
         };
     }

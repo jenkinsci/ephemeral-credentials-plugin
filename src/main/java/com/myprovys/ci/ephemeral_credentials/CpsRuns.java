@@ -1,4 +1,4 @@
-package com.myprovys.ci.credentials;
+package com.myprovys.ci.ephemeral_credentials;
 
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import hudson.model.Queue;
@@ -12,7 +12,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowExecutionOwner;
  * the whole-build-lifetime {@code CpsFlowExecution}, not to any transient
  * per-{@code node}-block {@code Executor}, so it stays correct across
  * parallel branches and sequential stage/agent changes. Returns null when
- * called from outside a running Pipeline step (e.g. a job-config credentials
+ * called from outside a running Pipeline step (e.g. a job-config ephemeral_credentials
  * dropdown, a freestyle build, or another plugin's incidental enumeration).
  */
 final class CpsRuns {

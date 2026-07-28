@@ -1,4 +1,4 @@
-package com.myprovys.ci.credentials;
+package com.myprovys.ci.ephemeral_credentials;
 
 import edu.umd.cs.findbugs.annotations.NonNull;
 import groovy.lang.Binding;
@@ -35,8 +35,8 @@ import org.jenkinsci.plugins.workflow.cps.GlobalVariable;
 @Extension
 public class WithEphemeralCredentialsGlobalVariable extends GlobalVariable {
 
-    private static final String RESOURCE = "com/myprovys/ci/credentials/WithEphemeralCredentials.groovy";
-    private static final String CLASS_NAME = "com.myprovys.ci.credentials.WithEphemeralCredentials";
+    private static final String RESOURCE = "com/myprovys/ci/ephemeral_credentials/WithEphemeralCredentials.groovy";
+    private static final String CLASS_NAME = "com.myprovys.ci.ephemeral_credentials.WithEphemeralCredentials";
 
     @NonNull
     @Override

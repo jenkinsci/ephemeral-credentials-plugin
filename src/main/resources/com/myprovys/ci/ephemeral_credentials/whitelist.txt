@@ -1,0 +1,9 @@
+staticMethod com.myprovys.ci.ephemeral_credentials.EphemeralCredentialsProvider get
+method com.myprovys.ci.ephemeral_credentials.EphemeralCredentialsProvider put hudson.model.Run java.lang.String com.cloudbees.plugins.credentials.Credentials
+staticMethod com.cloudbees.plugins.credentials.CredentialsProvider findCredentialById java.lang.String java.lang.Class hudson.model.Run
+staticMethod hudson.model.Run fromExternalizableId java.lang.String
+method com.myprovys.ci.ephemeral_credentials.EphemeralCredentialSpec getId
+method com.myprovys.ci.ephemeral_credentials.EphemeralCredentialSpec getDescription
+method com.myprovys.ci.ephemeral_credentials.EphemeralCredentialSpec inputParameters
+method com.myprovys.ci.ephemeral_credentials.EphemeralCredentialSpec materialize java.util.Map
+method hudson.model.ParameterDefinition getName

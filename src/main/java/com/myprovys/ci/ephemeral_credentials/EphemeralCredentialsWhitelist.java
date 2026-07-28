@@ -1,4 +1,4 @@
-package com.myprovys.ci.credentials;
+package com.myprovys.ci.ephemeral_credentials;
 
 import hudson.Extension;
 import java.io.IOException;
@@ -13,7 +13,7 @@ import org.jenkinsci.plugins.scriptsecurity.sandbox.whitelists.StaticWhitelist;
  * sandbox restrictions that build's Jenkinsfile is under. Every non-step Java
  * call it makes (including back into this plugin's own classes) therefore
  * needs an explicit script-security whitelist entry, the same way
- * credentials-binding or docker-workflow-plugin ship one for their own DSL glue.
+ * ephemeral_credentials-binding or docker-workflow-plugin ship one for their own DSL glue.
  */
 public class EphemeralCredentialsWhitelist {
 

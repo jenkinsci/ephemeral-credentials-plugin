@@ -1,4 +1,4 @@
-package com.myprovys.ci.credentials;
+package com.myprovys.ci.ephemeral_credentials;
 
 import com.cloudbees.plugins.credentials.Credentials;
 import com.cloudbees.plugins.credentials.CredentialsScope;
@@ -39,11 +39,11 @@ public class EphemeralUsernamePassword extends EphemeralCredentialSpec {
             return new UsernamePasswordCredentialsImpl(
                     CredentialsScope.GLOBAL, getId(), getDescription(), username, password);
         } catch (Exception e) {
-            // Newer credentials-plugin releases declare this constructor as
+            // Newer ephemeral_credentials-plugin releases declare this constructor as
             // throwing Descriptor.FormException (form-validation feedback
             // for the "Add Credentials" web UI - not relevant here). Caught
             // as the broad Exception type, not FormException by name, so
-            // this keeps compiling against older credentials-plugin
+            // this keeps compiling against older ephemeral_credentials-plugin
             // releases too, where the constructor doesn't declare throwing
             // anything at all.
             throw new IllegalStateException("Failed to build credential '" + getId() + "'", e);
