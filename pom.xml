@@ -33,6 +33,15 @@
              our jenkins.version and reproduces the exact NoSuchMethodError
              this override was originally added to fix. -->
     <jenkins-test-harness.version>2207.v3b_df04c801d4</jenkins-test-harness.version>
+
+    <!-- The parent POM already declares spotless-maven-plugin (Palantir Java
+             Format, plus sortPom for pom.xml) bound to `check` at `verify` -
+             gated behind this property, off by default ("Set to false to
+             enable Spotless" per the parent's own comment). Flipping it here
+             is all that's needed; adding a second, separate <plugin>
+             declaration would just duplicate the inherited one (and risk
+             configuring the wrong formatter). -->
+    <spotless.check.skip>false</spotless.check.skip>
   </properties>
 
   <!-- Several of our dependencies (workflow-cps / pipeline-input-step /

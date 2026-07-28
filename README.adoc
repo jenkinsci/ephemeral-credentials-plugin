@@ -415,6 +415,19 @@ mvn package
 
 Produces `target/ephemeral-credentials-provider.hpi`.
 
+`mvn verify` additionally requires a clean `spotbugs:check` and
+`spotless:check` (both bound to the `verify` phase). SpotBugs comes from
+the parent POM unconditionally; Spotless is already fully configured
+there too (Palantir Java Format for `.java`, `sortPom` for `pom.xml`) but
+ships **off** by default behind `spotless.check.skip` - this project
+overrides that property to `false` rather than declaring a second,
+separate `spotless-maven-plugin` block (which would just duplicate the
+inherited one, and risks configuring the wrong formatter - an earlier,
+wrong attempt at this pinned `googleJavaFormat` instead of the
+`palantirJavaFormat` the parent actually uses, and would have run as a
+second, redundant execution). Fix formatting issues with `mvn
+spotless:apply`.
+
 Dependency versions in `pom.xml` target the core version JSL currently
 targets (`jslcus/resources/core-version.txt` = `2.462.3`, set as the
 `jenkins.version` property). Most plugin versions come from importing

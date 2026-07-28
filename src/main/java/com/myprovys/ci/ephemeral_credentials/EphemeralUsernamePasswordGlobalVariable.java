@@ -33,13 +33,25 @@ public class EphemeralUsernamePasswordGlobalVariable extends GlobalVariable {
     @NonNull
     @Override
     public Object getValue(@NonNull CpsScript script) {
-        return new Closure<EphemeralCredentialSpec>(script) {
-            @SuppressWarnings("unused")
-            public EphemeralCredentialSpec doCall(Map<String, Object> args) {
-                return new EphemeralUsernamePassword(
-                        String.valueOf(args.get("id")),
-                        args.get("description") == null ? null : String.valueOf(args.get("description")));
-            }
-        };
+        return new Factory(script);
+    }
+
+    /**
+     * Named (not anonymous) so {@code doCall} - invoked reflectively by
+     * {@link Closure#call}, not from visible Java code - doesn't trip
+     * SpotBugs' {@code UMAC_UNCALLABLE_METHOD_OF_ANONYMOUS_CLASS}, which is
+     * specifically scoped to anonymous classes.
+     */
+    private static final class Factory extends Closure<EphemeralCredentialSpec> {
+        Factory(Object owner) {
+            super(owner);
+        }
+
+        @SuppressWarnings("unused")
+        public EphemeralCredentialSpec doCall(Map<String, Object> args) {
+            return new EphemeralUsernamePassword(
+                    String.valueOf(args.get("id")),
+                    args.get("description") == null ? null : String.valueOf(args.get("description")));
+        }
     }
 }

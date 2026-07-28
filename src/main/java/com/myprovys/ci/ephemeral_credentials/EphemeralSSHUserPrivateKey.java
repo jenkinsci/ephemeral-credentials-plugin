@@ -10,6 +10,7 @@ import hudson.model.TextParameterDefinition;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * <p>SSH Username with private key. Unlike the other credential types, this one
@@ -44,7 +45,10 @@ public class EphemeralSSHUserPrivateKey extends EphemeralCredentialSpec {
     }
 
     private static void ensureAvailable() {
-        Class<?> ignored = BasicSSHUserPrivateKey.class;
+        // The class literal itself is what forces resolution; wrapped in
+        // requireNonNull (always trivially true) rather than assigned to an
+        // unused local, which SpotBugs flags as a dead store.
+        Objects.requireNonNull(BasicSSHUserPrivateKey.class);
     }
 
     @Override
