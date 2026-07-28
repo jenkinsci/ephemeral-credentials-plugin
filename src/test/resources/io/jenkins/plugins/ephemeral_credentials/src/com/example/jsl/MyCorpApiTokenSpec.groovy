@@ -21,7 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-package io.jenkins.plugins.ephemeral_credentials.src.com.example.jsl
+package com.example.jsl
 
 import com.cloudbees.plugins.credentials.Credentials
 import com.cloudbees.plugins.credentials.CredentialsScope

@@ -1,4 +1,3 @@
-package io.jenkins.plugins.ephemeral_credentials.vars
 /*
  * The MIT License
  *
