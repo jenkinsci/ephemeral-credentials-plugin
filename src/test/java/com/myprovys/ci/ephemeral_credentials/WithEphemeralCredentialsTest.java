@@ -205,6 +205,65 @@ class WithEphemeralCredentialsTest {
         j.assertLogNotContains("keystorepw", run);
     }
 
+    @Test
+    @Timeout(120)
+    void decliningInputMovesOnWithoutTheCredential(JenkinsRule j) throws Exception {
+        WorkflowJob p = j.jenkins.createProject(WorkflowJob.class, "declined-then-provided");
+        p.setDefinition(new CpsFlowDefinition(
+                String.join(
+                        "\n",
+                        "pipeline {",
+                        "  agent any",
+                        "  stages {",
+                        "    stage('first') {",
+                        "      steps {",
+                        "        withEphemeralCredentials([ephemeralUsernamePassword(id: 'DECLINED_CRED', description: 'Please provide the test credential')]) {",
+                        "          echo 'RAN_BODY_AFTER_DECLINE'",
+                        "        }",
+                        "        echo 'STAGE_CONTINUED_AFTER_DECLINE'",
+                        "      }",
+                        "    }",
+                        "    stage('second') {",
+                        "      steps {",
+                        "        withEphemeralCredentials([ephemeralUsernamePassword(id: 'DECLINED_CRED', description: 'Please provide the test credential')]) {",
+                        "          withCredentials([usernamePassword(credentialsId: 'DECLINED_CRED', usernameVariable: 'U', passwordVariable: 'P')]) {",
+                        "            echo \"GOT:${U}:${P}\"",
+                        "          }",
+                        "        }",
+                        "      }",
+                        "    }",
+                        "  }",
+                        "}"),
+                true));
+
+        WorkflowRun run = p.scheduleBuild2(0).waitForStart();
+
+        // Decline the first stage's prompt entirely, rather than proceeding
+        // with a value.
+        InputStepExecution firstPause = waitForInput(run);
+        assertEquals("Please provide the test credential", firstPause.getInput().getMessage());
+        firstPause.doAbort();
+
+        // Nothing was cached for a declined credential, so the second
+        // stage's request for the same ID must prompt again rather than
+        // silently reusing anything.
+        InputStepExecution secondPause = waitForInput(run);
+        assertEquals(
+                "Please provide the test credential", secondPause.getInput().getMessage());
+        secondPause.proceed(Map.of("username", "carol", "password", "s3cret2"));
+
+        j.assertBuildStatusSuccess(j.waitForCompletion(run));
+
+        // The body of the first withEphemeralCredentials block, and the
+        // step after it in the same stage, both ran normally - declining
+        // the input did not abort the build.
+        j.assertLogContains("RAN_BODY_AFTER_DECLINE", run);
+        j.assertLogContains("STAGE_CONTINUED_AFTER_DECLINE", run);
+        // The later, accepted request still works normally.
+        j.assertLogContains("GOT:carol:", run);
+        j.assertLogNotContains("s3cret2", run);
+    }
+
     /** Helper for tests: a structurally valid (if empty) PKCS#12 keystore, for
      * exercising EphemeralCertificate without needing a real certificate. */
     private static byte[] emptyPkcs12Keystore(String password) throws Exception {

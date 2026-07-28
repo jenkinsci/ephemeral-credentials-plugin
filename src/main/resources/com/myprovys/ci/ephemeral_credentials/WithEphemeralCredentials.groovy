@@ -4,6 +4,8 @@ import com.cloudbees.plugins.credentials.CredentialsProvider
 import com.cloudbees.plugins.credentials.common.StandardCredentials
 import hudson.model.Run
 import org.jenkinsci.plugins.workflow.cps.CpsScript
+import org.jenkinsci.plugins.workflow.steps.FlowInterruptedException
+import org.jenkinsci.plugins.workflow.support.steps.input.Rejection
 
 /**
  * <p>Backs the {@code withEphemeralCredentials} global step. Shipped as Groovy
@@ -29,6 +31,14 @@ import org.jenkinsci.plugins.workflow.cps.CpsScript
  * {@code input} and {@code lock} steps provided by "pipeline-input-step"
  * and "lockable-resources" plugins respectively (or some mocks that
  * follow their API).</p>
+ *
+ * <p>Use of the {@code lock} step allows to limit the {@code input} of
+ * a previously missing credential to one of possibly many {@code parallel}
+ * or agent-bound stages that would want it: the first one to get the
+ * lock would ask for it, and others would find it  already cached when
+ * their turn comes. The user may cancel the {@code input} step, causing
+ * the credential to remain unknown but not interrupting the pipeline
+ * immediately in any other way.</p>
  *
  * <p>It is accompanied in plugin sources with a {@code whitelist.txt} file
  * to permit use of methods and classes that it refers to even in sandboxed
@@ -62,9 +72,24 @@ class WithEphemeralCredentials implements Serializable {
                     if (CredentialsProvider.findCredentialById(spec.id, StandardCredentials.class, Run.fromExternalizableId(runId)) == null) {
                         List params = spec.inputParameters()
                         String message = spec.description ?: "Provide credential '${spec.id}'"
-                        def raw = script.input(message: message, parameters: params)
-                        Map values = params.size() == 1 ? [(params[0].name): raw] : raw
-                        EphemeralCredentialsProvider.get().put(Run.fromExternalizableId(runId), spec.id, spec.materialize(values))
+                        try {
+                            def raw = script.input(message: message, parameters: params)
+                            Map values = params.size() == 1 ? [(params[0].name): raw] : raw
+                            EphemeralCredentialsProvider.get().put(Run.fromExternalizableId(runId), spec.id, spec.materialize(values))
+                        } catch (FlowInterruptedException e) {
+                            // Only swallow a genuine "user clicked Abort on
+                            // this input" - identifiable by a Rejection
+                            // cause, attached solely by InputStepExecution's
+                            // own abort handling. Anything else carrying
+                            // FlowInterruptedException (the whole build
+                            // being stopped, a timeout, ...) must propagate
+                            // so the build actually stops as intended,
+                            // rather than being silently swallowed here.
+                            if (!e.causes.any { it instanceof Rejection }) {
+                                throw e
+                            }
+                            script.echo("Credential '${spec.id}' was not provided (input declined) - continuing without it.")
+                        }
                     }
                 }
             }

@@ -7,3 +7,4 @@ method com.myprovys.ci.ephemeral_credentials.EphemeralCredentialSpec getDescript
 method com.myprovys.ci.ephemeral_credentials.EphemeralCredentialSpec inputParameters
 method com.myprovys.ci.ephemeral_credentials.EphemeralCredentialSpec materialize java.util.Map
 method hudson.model.ParameterDefinition getName
+method org.jenkinsci.plugins.workflow.steps.FlowInterruptedException getCauses
