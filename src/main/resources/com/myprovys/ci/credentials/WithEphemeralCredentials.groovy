@@ -42,8 +42,8 @@ class WithEphemeralCredentials implements Serializable {
         this.runId = runId
     }
 
-    def call(List specs = [], Closure body) {
-        for (spec in specs) {
+    def call(List<EphemeralCredentialSpec> specs = [], Closure body) {
+        for (EphemeralCredentialSpec spec in specs) {
             // Ask via the normal, global lookup first - this consults every
             // registered store (System/Folder/Job-scoped, and our own
             // ephemeral one too), so an ID that's already resolvable
