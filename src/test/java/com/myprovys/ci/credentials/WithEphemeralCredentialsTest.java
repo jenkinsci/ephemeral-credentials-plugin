@@ -99,6 +99,13 @@ class WithEphemeralCredentialsTest {
                         "        }",
                         "      }",
                         "    }",
+                        "    stage('third') {",
+                        "      steps {",
+                        "        withCredentials([usernamePassword(credentialsId: 'MISSING_CRED', usernameVariable: 'U', passwordVariable: 'P')]) {",
+                        "          echo \"THIRD:${U}:${P}\"",
+                        "        }",
+                        "      }",
+                        "    }",
                         "  }",
                         "}"),
                 true));
@@ -113,11 +120,18 @@ class WithEphemeralCredentialsTest {
         // Second stage requests the same ID again; since it's now cached,
         // this must complete without pausing a second time.
         j.assertBuildStatusSuccess(j.waitForCompletion(run));
+
         // Masked by withCredentials in the console log, same as the other
         // test - assert the username reached both stages and the raw
         // secret is never printed.
         j.assertLogContains("FIRST:bob:", run);
         j.assertLogContains("SECOND:bob:", run);
+
+        // A previously cached credential should remain resolved even without a
+        // withEphemeralCredentials wrapper, as long as Jenkins did not restart.
+        j.assertLogContains("THIRD:bob:", run);
+
+        // Password should remain hidden (by credentials binding plugin).
         j.assertLogNotContains("hunter2", run);
     }
 
