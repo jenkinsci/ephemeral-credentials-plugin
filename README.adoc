@@ -348,6 +348,59 @@ guarantee rests on the well-understood JVM behavior described above
 when the enclosing class loads), rather than on a harness rigged to remove
 an already-declared dependency.
 
+`WithEphemeralCredentialsCustomLibraryTest` illustrates and confirms that a
+*completely custom* credential type can be added without touching this
+plugin at all - by defining an `EphemeralCredentialSpec` subclass and its
+factory function in an ordinary (trusted, global) shared library instead,
+per the "Extending with more types" section above. The library content
+lives as genuine `.groovy` resource files under
+`src/test/resources/com/myprovys/ci/credentials/{vars,src}/` (not embedded
+Java string literals), copied into a throwaway local git repo
+(`GitSampleRepoRule`) and loaded via `GlobalLibraries`/`SCMSourceRetriever`/
+`GitSCMSource` - the same mechanism a real Jenkins controller uses for a
+globally-configured library, and the exact pattern the shared-library
+plugin's own test suite (`GlobalLibrariesTest`) uses to test this feature.
+The example library defines `vars/myCorpApiToken.groovy` (an
+independently-named factory, parallel to this plugin's own
+`ephemeralSecretText`) and `src/com/example/jsl/MyCorpApiTokenSpec.groovy`
+(an independently-named spec subclass reusing `StringCredentialsImpl` -
+the same type `EphemeralSecretText` already wraps - purely to prove the
+extension mechanism, not to add a genuinely new credential type).
+
+This test is deliberately classic JUnit 4 (`@Rule`, `org.junit.Test`)
+rather than this project's usual JUnit 5 `@WithJenkins`, since
+`GitSampleRepoRule` - the standard way to test SCM-loaded shared libraries -
+is itself a classic JUnit 4 `@Rule`; `junit-vintage-engine` lets our
+JUnit-Platform-based surefire run it alongside the rest. Two things worth
+knowing if this test needs touching:
+
+* **`JenkinsRule.timeout` needed raising to 600s.** This test's extra
+  plugin set (`git`, `scm-api`, `pipeline-groovy-lib`, and their own
+  transitive dependencies) makes plugin discovery alone slower than
+  `JenkinsRule`'s 180-second default in this environment - confirmed by a
+  thread dump showing the boot still stuck in plugin discovery at the
+  180-second mark, nowhere near the actual test logic yet.
+* **`git` needed a `credentials` version bump.** `git` 5.5.2 refused to
+  load against the `credentials` version this project's BOM snapshot
+  otherwise provides (`1371.vfee6b_095f0a_3`), demanding
+  `1378.v81ef4269d764` or higher - resolved with a `dependencyManagement`
+  override for just that one artifact (see the Build section) rather than
+  moving the whole BOM, since `1378` is a version already known to compile
+  clean against this project's code (it was the very first pin this
+  project used, before switching to BOM management).
+
+A non-blocking warning also surfaced during this work, worth watching:
+`workflow-cps` logs (but does not yet enforce) a
+`GroovySourceFileAllowlist` check against loading
+`WithEphemeralCredentials.groovy` "without sandbox protection" the way
+`WithEphemeralCredentialsGlobalVariable` does (`getResourceAsStream(...)` +
+`parseClass(...)`, described above). The build still succeeds today, but
+the warning message describes an opt-in allowlist system
+(`GroovySourceFileAllowlist.DefaultAllowlist.ALLOWED_SOURCE_FILES`) that a
+future `workflow-cps` release could plausibly tighten from warn to enforce -
+worth re-checking if this plugin's `workflow-cps` dependency is ever
+bumped.
+
 Run with `mvn test`.
 
 == Build
@@ -438,3 +491,18 @@ compatibility shim. The real extension point subclasses must override is
 .core.Authentication, List<DomainRequirement>)`, which is what this plugin
 does. Confirmed by decompiling the resolved plugin jar during development;
 worth re-checking if the `credentials` dependency version is ever bumped.
+
+`git` (needed only as a test dependency, for `WithEphemeralCredentialsCustomLibraryTest`)
+required bumping `credentials` past what this project's BOM snapshot
+otherwise provides - see the test's own notes above. Pinned via a
+`dependencyManagement` override for just that one artifact rather than
+moving the whole BOM:
+
+[source,xml]
+----
+<dependency>
+    <groupId>org.jenkins-ci.plugins</groupId>
+    <artifactId>credentials</artifactId>
+    <version>1378.v81ef4269d764</version>
+</dependency>
+----

@@ -52,6 +52,21 @@
         <type>pom</type>
         <scope>import</scope>
       </dependency>
+
+      <!-- git 5.5.2 (needed for WithEphemeralCredentialsCustomLibraryTest)
+               requires credentials >= 1378.v81ef4269d764, newer than what
+               this BOM snapshot provides (1371.vfee6b_095f0a_3) - overridden
+               here rather than bumping the whole BOM. Verified safe: this is
+               the exact version this project originally pinned before
+               switching to BOM management, and predates the FormException
+               change on UsernamePasswordCredentialsImpl's constructor that
+               only appeared in a much later credentials release (see
+               EphemeralUsernamePassword's defensive catch for that). -->
+      <dependency>
+        <groupId>org.jenkins-ci.plugins</groupId>
+        <artifactId>credentials</artifactId>
+        <version>1378.v81ef4269d764</version>
+      </dependency>
     </dependencies>
   </dependencyManagement>
 
@@ -163,6 +178,57 @@
     <dependency>
       <groupId>org.jenkinsci.plugins</groupId>
       <artifactId>pipeline-model-extensions</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- Test-only: WithEphemeralCredentialsCustomLibraryTest, illustrating
+             a custom credential type defined in a shared library rather than
+             in this plugin. Verified against
+             https://updates.jenkins.io/download/plugins/pipeline-groovy-lib/
+             (2024-10-11 release, requires core 2.414.3, compatible with our
+             2.462.3 baseline) and .../plugins/git/ (2024-10-04, requires
+             2.440.3). -->
+    <dependency>
+      <groupId>io.jenkins.plugins</groupId>
+      <artifactId>pipeline-groovy-lib</artifactId>
+      <version>740.va_2701257fe8d</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jenkins-ci.plugins</groupId>
+      <artifactId>git</artifactId>
+      <version>5.5.2</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <!-- GitSampleRepoRule - a local, throwaway git repo to load the
+                 test shared library from, ships in the git plugin's own
+                 test-jar. -->
+      <groupId>org.jenkins-ci.plugins</groupId>
+      <artifactId>git</artifactId>
+      <version>5.5.2</version>
+      <classifier>tests</classifier>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <!-- GitSampleRepoRule's own superclass (AbstractSampleDVCSRepoRule,
+                 which actually declares write()/mkdirs()) lives here. -->
+      <groupId>org.jenkins-ci.plugins</groupId>
+      <artifactId>scm-api</artifactId>
+      <classifier>tests</classifier>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- GitSampleRepoRule is a classic JUnit 4 @Rule (matching how the
+             pipeline-groovy-lib plugin's own test suite tests this exact
+             feature) - the vintage engine lets our JUnit-Platform-based
+             surefire run that one test class alongside the rest, which are
+             JUnit 5. Version matched to the junit-jupiter version already
+             resolved transitively via jenkins-test-harness. -->
+    <dependency>
+      <groupId>org.junit.vintage</groupId>
+      <artifactId>junit-vintage-engine</artifactId>
+      <version>6.1.2</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
