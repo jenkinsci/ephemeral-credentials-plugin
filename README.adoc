@@ -362,8 +362,8 @@ plugin at all - by defining an `EphemeralCredentialSpec` subclass and its
 factory function in an ordinary (trusted, global) shared library instead,
 per the "Extending with more types" section above. The library content
 lives as genuine `.groovy` resource files under
-`src/test/resources/com/myprovys/ci/credentials/{vars,src}/` (not embedded
-Java string literals), copied into a throwaway local git repo
+`src/test/resources/io/jenkins/plugins/ephemeral_credentials/{vars,src}/`
+(not embedded Java string literals), copied into a throwaway local git repo
 (`GitSampleRepoRule`) and loaded via `GlobalLibraries`/`SCMSourceRetriever`/
 `GitSCMSource` - the same mechanism a real Jenkins controller uses for a
 globally-configured library, and the exact pattern the shared-library

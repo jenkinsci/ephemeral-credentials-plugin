@@ -9,8 +9,8 @@
     <relativePath />
   </parent>
 
-  <groupId>com.myprovys.ci</groupId>
-  <artifactId>ephemeral-credentials-provider</artifactId>
+  <groupId>io.jenkins.plugins</groupId>
+  <artifactId>ephemeral-credentials</artifactId>
   <version>${revision}${changelist}</version>
   <packaging>hpi</packaging>
 

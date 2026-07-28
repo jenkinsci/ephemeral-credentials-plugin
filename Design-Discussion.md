@@ -50,7 +50,7 @@ path distinct from the classic `build.xml`/`credentials.xml` one.
 ## 3. First design: a JSL shared-library step + a per-build provider
 
 Initial shape: a JSL `vars/` step wrapping `withCredentials`, backed by an
-`EphemeralCredentialsProvider` class in `JSL/src/com/myprovys/ci/`,
+`EphemeralCredentialsProvider` class in `JSL/src/io/jenkins/plugins/`,
 registered/deregistered via `ExtensionList` add/remove around the build.
 
 ### Rejected: "hijack" other providers so this store is the only visible one
@@ -180,9 +180,10 @@ needed - be doable and CPS-safe?
   can skip the latter.
 
 This is the point at which the plugin was actually scaffolded at
-`C:\Provys\optest\EphemeralCredentialsProvider` (initially Gradle, per house
-convention for `jslcus`; later converted to Maven on request, since Maven is
-the more common toolchain for Jenkins plugins specifically).
+`EphemeralCredentialsProvider` directory (initially Gradle, per house
+convention for Jenkins shared libraries; later converted to Maven on
+request, since Maven is the more common toolchain for Jenkins plugins
+specifically).
 
 ## 5. Making it transparent without per-call-site migration
 

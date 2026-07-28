@@ -1,0 +1,10 @@
+staticMethod io.jenkins.plugins.ephemeral_credentials.EphemeralCredentialsProvider get
+method io.jenkins.plugins.ephemeral_credentials.EphemeralCredentialsProvider put hudson.model.Run java.lang.String com.cloudbees.plugins.credentials.Credentials
+staticMethod com.cloudbees.plugins.credentials.CredentialsProvider findCredentialById java.lang.String java.lang.Class hudson.model.Run
+staticMethod hudson.model.Run fromExternalizableId java.lang.String
+method io.jenkins.plugins.ephemeral_credentials.EphemeralCredentialSpec getId
+method io.jenkins.plugins.ephemeral_credentials.EphemeralCredentialSpec getDescription
+method io.jenkins.plugins.ephemeral_credentials.EphemeralCredentialSpec inputParameters
+method io.jenkins.plugins.ephemeral_credentials.EphemeralCredentialSpec materialize java.util.Map
+method hudson.model.ParameterDefinition getName
+method org.jenkinsci.plugins.workflow.steps.FlowInterruptedException getCauses
