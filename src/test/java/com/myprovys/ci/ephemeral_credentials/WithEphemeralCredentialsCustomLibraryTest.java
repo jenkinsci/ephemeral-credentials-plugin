@@ -1,6 +1,6 @@
 package com.myprovys.ci.ephemeral_credentials;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -17,9 +17,12 @@ import org.jenkinsci.plugins.workflow.libs.LibraryConfiguration;
 import org.jenkinsci.plugins.workflow.libs.SCMSourceRetriever;
 import org.jenkinsci.plugins.workflow.support.steps.input.InputAction;
 import org.jenkinsci.plugins.workflow.support.steps.input.InputStepExecution;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.jvnet.hudson.test.JenkinsRule;
+import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
 
 /**
  * Illustrates and confirms that a completely custom credential type can be
@@ -42,32 +45,34 @@ import org.jvnet.hudson.test.JenkinsRule;
  *       extension mechanism, not to add a genuinely new credential type.</li>
  * </ul>
  *
- * <p>This is deliberately written in classic JUnit 4 style (rather than this
- * project's usual JUnit 5 {@code @WithJenkins}), because {@link
- * GitSampleRepoRule} - the standard way to test SCM-loaded shared libraries -
- * is a classic JUnit 4 {@code @Rule}, matching the pattern the shared-library
- * plugin's own test suite ({@code GlobalLibrariesTest}) uses for exactly
- * this feature.
+ * <p>{@link GitSampleRepoRule} - the standard way to test SCM-loaded shared
+ * libraries, matching the pattern the shared-library plugin's own test suite
+ * ({@code GlobalLibrariesTest}) uses for exactly this feature - is a classic
+ * JUnit 4 {@code @Rule} with no JUnit 5 form, and this project's enforcer
+ * config bans any {@code org.junit.*} import in test code (including {@code
+ * @Rule} itself), so its {@code before()}/{@code after()} are driven directly
+ * from {@code @BeforeEach}/{@code @AfterEach} here instead of through a rule
+ * mechanism. {@link JenkinsRule} itself still comes from the ordinary
+ * {@code @WithJenkins} parameter injection this project's other tests use.
  */
-public class WithEphemeralCredentialsCustomLibraryTest {
+@WithJenkins
+class WithEphemeralCredentialsCustomLibraryTest {
 
-    @Rule
-    public JenkinsRule j = new JenkinsRule() {
-        {
-            // This test's extra plugin set (git, scm-api, pipeline-groovy-lib
-            // and their own transitive dependencies) makes plugin discovery
-            // alone slower than JenkinsRule's 180s default test timeout in
-            // some environments - bumped well above the ~150s boot time
-            // observed here, not just nudged past it.
-            timeout = 600;
-        }
-    };
+    private final GitSampleRepoRule sampleRepo = new GitSampleRepoRule();
 
-    @Rule
-    public GitSampleRepoRule sampleRepo = new GitSampleRepoRule();
+    @BeforeEach
+    void startSampleRepo() throws Throwable {
+        sampleRepo.before();
+    }
+
+    @AfterEach
+    void stopSampleRepo() {
+        sampleRepo.after();
+    }
 
     @Test
-    public void customCredentialTypeDefinedInSharedLibrary() throws Exception {
+    @Timeout(600)
+    void customCredentialTypeDefinedInSharedLibrary(JenkinsRule j) throws Exception {
         sampleRepo.init();
         copyResourceIntoRepo("vars/myCorpApiToken.groovy", "vars/myCorpApiToken.groovy");
         copyResourceIntoRepo(

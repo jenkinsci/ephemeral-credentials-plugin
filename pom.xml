@@ -152,6 +152,12 @@
       <scope>test</scope>
     </dependency>
     <dependency>
+      <!-- GitSCMSource, used directly to configure the test shared library. -->
+      <groupId>org.jenkins-ci.plugins</groupId>
+      <artifactId>git</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
       <!-- GitSampleRepoRule - a local, throwaway git repo to load the
                  test shared library from, ships in the git plugin's own
                  test-jar. -->
@@ -213,19 +219,6 @@
     <dependency>
       <groupId>org.jenkinsci.plugins</groupId>
       <artifactId>pipeline-model-extensions</artifactId>
-      <scope>test</scope>
-    </dependency>
-
-    <!-- GitSampleRepoRule is a classic JUnit 4 @Rule (matching how the
-             pipeline-groovy-lib plugin's own test suite tests this exact
-             feature) - the vintage engine lets our JUnit-Platform-based
-             surefire run that one test class alongside the rest, which are
-             JUnit 5. Version matched to the junit-jupiter version already
-             resolved transitively via jenkins-test-harness. -->
-    <dependency>
-      <groupId>org.junit.vintage</groupId>
-      <artifactId>junit-vintage-engine</artifactId>
-      <version>6.1.2</version>
       <scope>test</scope>
     </dependency>
   </dependencies>

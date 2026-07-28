@@ -37,6 +37,8 @@ public class EphemeralSecretTextGlobalVariable extends GlobalVariable {
      * specifically scoped to anonymous classes.
      */
     private static final class Factory extends Closure<EphemeralCredentialSpec> {
+        private static final long serialVersionUID = 1L;
+
         Factory(Object owner) {
             super(owner);
         }
