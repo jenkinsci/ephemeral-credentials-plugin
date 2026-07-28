@@ -62,6 +62,22 @@
     <banObsoleteDependencyOverrides.skip>false</banObsoleteDependencyOverrides.skip>
     <spotbugs.effort>Max</spotbugs.effort>
     <spotbugs.threshold>Low</spotbugs.threshold>
+
+    <!-- Same as the parent POM's own argLine property, plus the JVM's
+             enable-native-access flag (see the literal value below) to
+             silence the "restricted method ... System::load ... called by
+             com.sun.jna.Native" warning JenkinsRule triggers every test run
+             (Jenkins core uses JNA for native process handling). Can't
+             extend the parent's
+             value with a surefire-side @{argLine} reference instead of
+             duplicating it: the parent's argLine already embeds its own
+             @{jenkins.addOpens}/@{jenkins.insaneHook}/@{jenkins.javaAgent}
+             tokens (set dynamically by maven-hpi-plugin's test-runtime goal),
+             and Surefire's @{...} substitution is a single pass - wrapping
+             that whole string in another @{argLine} left those inner tokens
+             unexpanded and crashed the fork (confirmed: "could not open
+             `{jenkins.addOpens}'"). -->
+    <argLine>-Xms768M -Xmx768M -XX:+HeapDumpOnOutOfMemoryError -XX:+TieredCompilation -XX:TieredStopAtLevel=1 @{jenkins.addOpens} @{jenkins.insaneHook} @{jenkins.javaAgent} --enable-native-access=ALL-UNNAMED</argLine>
   </properties>
 
   <!-- Several of our dependencies (workflow-cps / pipeline-input-step /
@@ -255,6 +271,7 @@
           <disabledTestInjection>true</disabledTestInjection>
         </configuration>
       </plugin>
+
     </plugins>
   </build>
 </project>
