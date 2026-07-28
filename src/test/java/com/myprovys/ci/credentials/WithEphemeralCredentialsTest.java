@@ -121,6 +121,10 @@ class WithEphemeralCredentialsTest {
         j.assertLogNotContains("hunter2", run);
     }
 
+    /** Helper for tests: stall until a pending input() is reached in the monitored pipeline.
+     * See {@link #missingCredentialPromptsAndReusesCacheOnSecondCall} about interacting
+     * with that input() from the test code.
+     */
     private static InputStepExecution waitForInput(WorkflowRun run) throws Exception {
         long deadline = System.currentTimeMillis() + 60_000;
         while (System.currentTimeMillis() < deadline) {
@@ -136,6 +140,7 @@ class WithEphemeralCredentialsTest {
         throw new AssertionError("Timed out waiting for the pipeline to pause on input()");
     }
 
+    /** Helper for tests: assert that NO pending input() is reached in the monitored pipeline. */
     private static void assertNoPendingInput(WorkflowRun run) throws Exception {
         InputAction action = run.getAction(InputAction.class);
         boolean waiting = action != null && !action.getExecutions().isEmpty();

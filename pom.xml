@@ -20,9 +20,9 @@
         Nothing it holds is ever written to disk.</description>
 
   <properties>
-    <!-- Kept aligned with the core version JSL currently targets -
-             see C:\Provys\optest\jslcus\resources\core-version.txt.
-             Bump both together. -->
+    <!-- Initially aligned with the core version that our internal JSL
+             currently targets. Probably best to bump both together.
+      -->
     <jenkins.version>2.462.3</jenkins.version>
     <java.level>11</java.level>
 
@@ -55,8 +55,9 @@
   <dependencies>
     <dependency>
       <!-- Community plugin, not part of the Jenkins-org BOM - version
-                 verified against jslcus/build.gradle.kts, which already pins
-                 this exact release for the same core baseline. -->
+                 verified against internal JSL build.gradle.kts, which
+                 already pins this exact release for the same core baseline.
+        -->
       <groupId>org.6wind.jenkins</groupId>
       <artifactId>lockable-resources</artifactId>
       <version>1315.v4ea_8e5159ec8</version>
