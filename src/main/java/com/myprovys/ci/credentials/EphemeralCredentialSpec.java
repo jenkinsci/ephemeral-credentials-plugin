@@ -2,7 +2,6 @@ package com.myprovys.ci.credentials;
 
 import com.cloudbees.plugins.credentials.Credentials;
 import hudson.model.ParameterDefinition;
-
 import java.io.Serializable;
 import java.util.List;
 import java.util.Map;

@@ -3,10 +3,9 @@ package com.myprovys.ci.credentials;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import groovy.lang.Closure;
 import hudson.Extension;
+import java.util.Map;
 import org.jenkinsci.plugins.workflow.cps.CpsScript;
 import org.jenkinsci.plugins.workflow.cps.GlobalVariable;
-
-import java.util.Map;
 
 /**
  * Registers {@code ephemeralUsernamePassword(id: ..., description: ...)} as

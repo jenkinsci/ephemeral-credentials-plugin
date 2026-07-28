@@ -5,11 +5,10 @@ import com.cloudbees.plugins.credentials.CredentialsScope;
 import hudson.model.ParameterDefinition;
 import hudson.model.PasswordParameterDefinition;
 import hudson.util.Secret;
-import org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl;
-
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl;
 
 public class EphemeralSecretText extends EphemeralCredentialSpec {
 
@@ -22,8 +21,7 @@ public class EphemeralSecretText extends EphemeralCredentialSpec {
     @Override
     public List<ParameterDefinition> inputParameters() {
         return Collections.singletonList(
-                new PasswordParameterDefinition("secret", "", "Secret value for credential '" + getId() + "'")
-        );
+                new PasswordParameterDefinition("secret", "", "Secret value for credential '" + getId() + "'"));
     }
 
     @Override

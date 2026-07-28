@@ -1,11 +1,10 @@
 package com.myprovys.ci.credentials;
 
 import hudson.Extension;
-import org.jenkinsci.plugins.scriptsecurity.sandbox.Whitelist;
-import org.jenkinsci.plugins.scriptsecurity.sandbox.whitelists.StaticWhitelist;
-
 import java.io.IOException;
 import java.net.URL;
+import org.jenkinsci.plugins.scriptsecurity.sandbox.Whitelist;
+import org.jenkinsci.plugins.scriptsecurity.sandbox.whitelists.StaticWhitelist;
 
 /**
  * WithEphemeralCredentials.groovy is compiled through the calling build's own

@@ -1,8 +1,13 @@
 package com.myprovys.ci.credentials;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.cloudbees.plugins.credentials.CredentialsScope;
 import com.cloudbees.plugins.credentials.SystemCredentialsProvider;
 import com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl;
+import java.util.List;
+import java.util.Map;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
@@ -12,13 +17,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.jvnet.hudson.test.JenkinsRule;
 import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
-
-import java.util.List;
-import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Illustrates and confirms the withEphemeralCredentials contract end to end,
@@ -38,27 +36,31 @@ class WithEphemeralCredentialsTest {
     @Test
     @Timeout(120)
     void alreadyRegisteredCredentialIsNeverPrompted(JenkinsRule j) throws Exception {
-        SystemCredentialsProvider.getInstance().getCredentials().add(
-                new UsernamePasswordCredentialsImpl(CredentialsScope.GLOBAL, "EXISTING_CRED", "pre-registered", "alice", "s3cr3t"));
+        SystemCredentialsProvider.getInstance()
+                .getCredentials()
+                .add(new UsernamePasswordCredentialsImpl(
+                        CredentialsScope.GLOBAL, "EXISTING_CRED", "pre-registered", "alice", "s3cr3t"));
         SystemCredentialsProvider.getInstance().save();
 
         WorkflowJob p = j.jenkins.createProject(WorkflowJob.class, "already-registered");
-        p.setDefinition(new CpsFlowDefinition(String.join("\n",
-                "pipeline {",
-                "  agent any",
-                "  stages {",
-                "    stage('go') {",
-                "      steps {",
-                "        withEphemeralCredentials([ephemeralUsernamePassword(id: 'EXISTING_CRED', description: 'should not be asked')]) {",
-                "          withCredentials([usernamePassword(credentialsId: 'EXISTING_CRED', usernameVariable: 'U', passwordVariable: 'P')]) {",
-                "            echo \"GOT:${U}:${P}\"",
-                "          }",
-                "        }",
-                "      }",
-                "    }",
-                "  }",
-                "}"
-        ), true));
+        p.setDefinition(new CpsFlowDefinition(
+                String.join(
+                        "\n",
+                        "pipeline {",
+                        "  agent any",
+                        "  stages {",
+                        "    stage('go') {",
+                        "      steps {",
+                        "        withEphemeralCredentials([ephemeralUsernamePassword(id: 'EXISTING_CRED', description: 'should not be asked')]) {",
+                        "          withCredentials([usernamePassword(credentialsId: 'EXISTING_CRED', usernameVariable: 'U', passwordVariable: 'P')]) {",
+                        "            echo \"GOT:${U}:${P}\"",
+                        "          }",
+                        "        }",
+                        "      }",
+                        "    }",
+                        "  }",
+                        "}"),
+                true));
 
         WorkflowRun run = j.assertBuildStatusSuccess(p.scheduleBuild2(0));
         // withCredentials masks the password in the console log, so assert
@@ -73,31 +75,33 @@ class WithEphemeralCredentialsTest {
     @Timeout(120)
     void missingCredentialPromptsAndReusesCacheOnSecondCall(JenkinsRule j) throws Exception {
         WorkflowJob p = j.jenkins.createProject(WorkflowJob.class, "missing-then-cached");
-        p.setDefinition(new CpsFlowDefinition(String.join("\n",
-                "pipeline {",
-                "  agent any",
-                "  stages {",
-                "    stage('first') {",
-                "      steps {",
-                "        withEphemeralCredentials([ephemeralUsernamePassword(id: 'MISSING_CRED', description: 'Provide the test credential')]) {",
-                "          withCredentials([usernamePassword(credentialsId: 'MISSING_CRED', usernameVariable: 'U', passwordVariable: 'P')]) {",
-                "            echo \"FIRST:${U}:${P}\"",
-                "          }",
-                "        }",
-                "      }",
-                "    }",
-                "    stage('second') {",
-                "      steps {",
-                "        withEphemeralCredentials([ephemeralUsernamePassword(id: 'MISSING_CRED', description: 'Provide the test credential')]) {",
-                "          withCredentials([usernamePassword(credentialsId: 'MISSING_CRED', usernameVariable: 'U', passwordVariable: 'P')]) {",
-                "            echo \"SECOND:${U}:${P}\"",
-                "          }",
-                "        }",
-                "      }",
-                "    }",
-                "  }",
-                "}"
-        ), true));
+        p.setDefinition(new CpsFlowDefinition(
+                String.join(
+                        "\n",
+                        "pipeline {",
+                        "  agent any",
+                        "  stages {",
+                        "    stage('first') {",
+                        "      steps {",
+                        "        withEphemeralCredentials([ephemeralUsernamePassword(id: 'MISSING_CRED', description: 'Provide the test credential')]) {",
+                        "          withCredentials([usernamePassword(credentialsId: 'MISSING_CRED', usernameVariable: 'U', passwordVariable: 'P')]) {",
+                        "            echo \"FIRST:${U}:${P}\"",
+                        "          }",
+                        "        }",
+                        "      }",
+                        "    }",
+                        "    stage('second') {",
+                        "      steps {",
+                        "        withEphemeralCredentials([ephemeralUsernamePassword(id: 'MISSING_CRED', description: 'Provide the test credential')]) {",
+                        "          withCredentials([usernamePassword(credentialsId: 'MISSING_CRED', usernameVariable: 'U', passwordVariable: 'P')]) {",
+                        "            echo \"SECOND:${U}:${P}\"",
+                        "          }",
+                        "        }",
+                        "      }",
+                        "    }",
+                        "  }",
+                        "}"),
+                true));
 
         WorkflowRun run = p.scheduleBuild2(0).waitForStart();
 

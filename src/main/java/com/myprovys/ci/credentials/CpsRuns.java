@@ -3,10 +3,9 @@ package com.myprovys.ci.credentials;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import hudson.model.Queue;
 import hudson.model.Run;
+import java.io.IOException;
 import org.jenkinsci.plugins.workflow.cps.CpsThread;
 import org.jenkinsci.plugins.workflow.flow.FlowExecutionOwner;
-
-import java.io.IOException;
 
 /**
  * Resolves "which Run is the calling CPS thread executing for" - anchored to
@@ -18,8 +17,7 @@ import java.io.IOException;
  */
 final class CpsRuns {
 
-    private CpsRuns() {
-    }
+    private CpsRuns() {}
 
     @CheckForNull
     static Run<?, ?> current() {

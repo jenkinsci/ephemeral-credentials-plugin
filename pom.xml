@@ -1,55 +1,38 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
 
-    <parent>
-        <groupId>org.jenkins-ci.plugins</groupId>
-        <artifactId>plugin</artifactId>
-        <version>6.2211.v27f680c93c53</version>
-        <relativePath />
-    </parent>
+  <parent>
+    <groupId>org.jenkins-ci.plugins</groupId>
+    <artifactId>plugin</artifactId>
+    <version>6.2211.v27f680c93c53</version>
+    <relativePath />
+  </parent>
 
-    <groupId>com.myprovys.ci</groupId>
-    <artifactId>ephemeral-credentials-provider</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
-    <packaging>hpi</packaging>
+  <groupId>com.myprovys.ci</groupId>
+  <artifactId>ephemeral-credentials-provider</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>hpi</packaging>
 
-    <name>Ephemeral Credentials Provider</name>
-    <description>
-        Run-scoped, in-memory CredentialsProvider: resolves credentials only for the
+  <name>Ephemeral Credentials Provider</name>
+  <description>Run-scoped, in-memory CredentialsProvider: resolves credentials only for the
         Pipeline build currently executing, and only what that build itself cached.
-        Nothing it holds is ever written to disk.
-    </description>
+        Nothing it holds is ever written to disk.</description>
 
-    <properties>
-        <!-- Kept aligned with the core version JSL currently targets -
+  <properties>
+    <!-- Kept aligned with the core version JSL currently targets -
              see C:\Provys\optest\jslcus\resources\core-version.txt.
              Bump both together. -->
-        <jenkins.version>2.462.3</jenkins.version>
-        <java.level>11</java.level>
+    <jenkins.version>2.462.3</jenkins.version>
+    <java.level>11</java.level>
 
-        <!-- Parent POM's BannedDependencies rule requires this exact
+    <!-- Parent POM's BannedDependencies rule requires this exact
              property name rather than a literal <version> on the
              dependency itself. -->
-        <jenkins-test-harness.version>2207.v3b_df04c801d4</jenkins-test-harness.version>
-    </properties>
+    <jenkins-test-harness.version>2207.v3b_df04c801d4</jenkins-test-harness.version>
+  </properties>
 
-    <repositories>
-        <repository>
-            <id>repo.jenkins-ci.org</id>
-            <url>https://repo.jenkins-ci.org/public/</url>
-        </repository>
-    </repositories>
-    <pluginRepositories>
-        <pluginRepository>
-            <id>repo.jenkins-ci.org</id>
-            <url>https://repo.jenkins-ci.org/public/</url>
-        </pluginRepository>
-    </pluginRepositories>
-
-    <!-- Several of our dependencies (workflow-cps / pipeline-input-step /
+  <!-- Several of our dependencies (workflow-cps / pipeline-input-step /
          lockable-resources) each transitively want their own versions of
          workflow-support, script-security, workflow-api, etc., which trips
          the parent POM's RequireUpperBoundDeps enforcer rule if resolved
@@ -57,124 +40,137 @@
          mutually-consistent version set instead of pinning each conflict by
          hand as it's discovered - so most dependencies below omit <version>
          and let the BOM supply it. -->
-    <dependencyManagement>
-        <dependencies>
-            <dependency>
-                <groupId>io.jenkins.tools.bom</groupId>
-                <artifactId>bom-2.462.x</artifactId>
-                <version>3387.v0f2773fa_3200</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
-
+  <dependencyManagement>
     <dependencies>
-        <dependency>
-            <groupId>org.jenkins-ci.plugins</groupId>
-            <artifactId>credentials</artifactId>
-        </dependency>
+      <dependency>
+        <groupId>io.jenkins.tools.bom</groupId>
+        <artifactId>bom-2.462.x</artifactId>
+        <version>3387.v0f2773fa_3200</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
 
-        <dependency>
-            <groupId>org.jenkins-ci.plugins.workflow</groupId>
-            <artifactId>workflow-cps</artifactId>
-        </dependency>
+  <dependencies>
+    <dependency>
+      <!-- Community plugin, not part of the Jenkins-org BOM - version
+                 verified against jslcus/build.gradle.kts, which already pins
+                 this exact release for the same core baseline. -->
+      <groupId>org.6wind.jenkins</groupId>
+      <artifactId>lockable-resources</artifactId>
+      <version>1315.v4ea_8e5159ec8</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jenkins-ci.plugins</groupId>
+      <artifactId>credentials</artifactId>
+    </dependency>
 
-        <!-- For EphemeralSecretText's StringCredentialsImpl. -->
-        <dependency>
-            <groupId>org.jenkins-ci.plugins</groupId>
-            <artifactId>plain-credentials</artifactId>
-        </dependency>
-
-        <!-- Real (non-test) dependencies: WithEphemeralCredentials.groovy calls
+    <!-- Real (non-test) dependencies: WithEphemeralCredentials.groovy calls
              the `lock` and `input` steps by name, so these must be declared
              here to end up in the plugin's manifest as required dependencies -
              Jenkins should refuse to load this plugin without them installed,
              same as it would for any other step it composes with. Neither is
              referenced from Java, so no compile-time import needed for them. -->
-        <dependency>
-            <groupId>org.jenkins-ci.plugins</groupId>
-            <artifactId>pipeline-input-step</artifactId>
-        </dependency>
-        <dependency>
-            <!-- Community plugin, not part of the Jenkins-org BOM - version
-                 verified against jslcus/build.gradle.kts, which already pins
-                 this exact release for the same core baseline. -->
-            <groupId>org.6wind.jenkins</groupId>
-            <artifactId>lockable-resources</artifactId>
-            <version>1315.v4ea_8e5159ec8</version>
-        </dependency>
+    <dependency>
+      <groupId>org.jenkins-ci.plugins</groupId>
+      <artifactId>pipeline-input-step</artifactId>
+    </dependency>
 
-        <!-- Test-only: declarative pipeline + JenkinsRule integration tests. -->
-        <dependency>
-            <groupId>org.jenkins-ci.plugins</groupId>
-            <artifactId>credentials-binding</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.jenkins-ci.plugins.workflow</groupId>
-            <artifactId>workflow-job</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.jenkins-ci.plugins.workflow</groupId>
-            <artifactId>workflow-basic-steps</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.jenkins-ci.plugins.workflow</groupId>
-            <artifactId>workflow-durable-task-step</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.jenkins-ci.plugins.workflow</groupId>
-            <artifactId>workflow-step-api</artifactId>
-            <scope>test</scope>
-        </dependency>
+    <!-- For EphemeralSecretText's StringCredentialsImpl. -->
+    <dependency>
+      <groupId>org.jenkins-ci.plugins</groupId>
+      <artifactId>plain-credentials</artifactId>
+    </dependency>
 
-        <!-- Declarative pipeline (`pipeline { ... }`) support. -->
-        <dependency>
-            <groupId>org.jenkinsci.plugins</groupId>
-            <artifactId>pipeline-model-api</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.jenkinsci.plugins</groupId>
-            <artifactId>pipeline-model-definition</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.jenkinsci.plugins</groupId>
-            <artifactId>pipeline-model-extensions</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.jenkinsci.plugins</groupId>
-            <artifactId>pipeline-model-declarative-agent</artifactId>
-            <version>1.1.1</version>
-            <scope>test</scope>
-        </dependency>
+    <dependency>
+      <groupId>org.jenkins-ci.plugins.workflow</groupId>
+      <artifactId>workflow-cps</artifactId>
+    </dependency>
 
-        <dependency>
-            <groupId>org.jenkins-ci.main</groupId>
-            <artifactId>jenkins-test-harness</artifactId>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
+    <dependency>
+      <groupId>org.jenkins-ci.main</groupId>
+      <artifactId>jenkins-test-harness</artifactId>
+      <scope>test</scope>
+    </dependency>
 
-    <build>
-        <plugins>
-            <!-- We have real tests now (WithEphemeralCredentialsTest); the
+    <!-- Test-only: declarative pipeline + JenkinsRule integration tests. -->
+    <dependency>
+      <groupId>org.jenkins-ci.plugins</groupId>
+      <artifactId>credentials-binding</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jenkins-ci.plugins.workflow</groupId>
+      <artifactId>workflow-basic-steps</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jenkins-ci.plugins.workflow</groupId>
+      <artifactId>workflow-durable-task-step</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jenkins-ci.plugins.workflow</groupId>
+      <artifactId>workflow-job</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jenkins-ci.plugins.workflow</groupId>
+      <artifactId>workflow-step-api</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- Declarative pipeline (`pipeline { ... }`) support. -->
+    <dependency>
+      <groupId>org.jenkinsci.plugins</groupId>
+      <artifactId>pipeline-model-api</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jenkinsci.plugins</groupId>
+      <artifactId>pipeline-model-declarative-agent</artifactId>
+      <version>1.1.1</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jenkinsci.plugins</groupId>
+      <artifactId>pipeline-model-definition</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jenkinsci.plugins</groupId>
+      <artifactId>pipeline-model-extensions</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <repositories>
+    <repository>
+      <id>repo.jenkins-ci.org</id>
+      <url>https://repo.jenkins-ci.org/public/</url>
+    </repository>
+  </repositories>
+  <pluginRepositories>
+    <pluginRepository>
+      <id>repo.jenkins-ci.org</id>
+      <url>https://repo.jenkins-ci.org/public/</url>
+    </pluginRepository>
+  </pluginRepositories>
+
+  <build>
+    <plugins>
+      <!-- We have real tests now (WithEphemeralCredentialsTest); the
                  parent POM's auto-generated JenkinsRule smoke test
                  (InjectedTest) references a org.jvnet.hudson.test.injected
                  package this jenkins-test-harness version doesn't have. -->
-            <plugin>
-                <groupId>org.jenkins-ci.tools</groupId>
-                <artifactId>maven-hpi-plugin</artifactId>
-                <configuration>
-                    <disabledTestInjection>true</disabledTestInjection>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
+      <plugin>
+        <groupId>org.jenkins-ci.tools</groupId>
+        <artifactId>maven-hpi-plugin</artifactId>
+        <configuration>
+          <disabledTestInjection>true</disabledTestInjection>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>

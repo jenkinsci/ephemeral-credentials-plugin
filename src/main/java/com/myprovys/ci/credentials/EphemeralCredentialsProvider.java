@@ -10,15 +10,14 @@ import hudson.Extension;
 import hudson.ExtensionList;
 import hudson.model.ItemGroup;
 import hudson.model.Run;
-import org.jenkinsci.plugins.workflow.cps.CpsThread;
-import org.springframework.security.core.Authentication;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jenkinsci.plugins.workflow.cps.CpsThread;
+import org.springframework.security.core.Authentication;
 
 /**
  * A {@link CredentialsProvider} that only ever answers with credentials that
@@ -75,10 +74,11 @@ public class EphemeralCredentialsProvider extends CredentialsProvider {
 
     @NonNull
     @Override
-    public <C extends Credentials> List<C> getCredentialsInItemGroup(@NonNull Class<C> type,
-                                                                       @NonNull ItemGroup itemGroup,
-                                                                       @Nullable Authentication authentication,
-                                                                       @NonNull List<DomainRequirement> domainRequirements) {
+    public <C extends Credentials> List<C> getCredentialsInItemGroup(
+            @NonNull Class<C> type,
+            @NonNull ItemGroup itemGroup,
+            @Nullable Authentication authentication,
+            @NonNull List<DomainRequirement> domainRequirements) {
         Run<?, ?> run = CpsRuns.current();
         Collection<Map<String, Credentials>> candidates;
         if (run != null) {

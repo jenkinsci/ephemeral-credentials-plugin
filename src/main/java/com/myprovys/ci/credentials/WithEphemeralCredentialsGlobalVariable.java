@@ -5,12 +5,11 @@ import groovy.lang.Binding;
 import groovy.lang.GroovyClassLoader;
 import hudson.Extension;
 import hudson.model.Run;
-import org.jenkinsci.plugins.workflow.cps.CpsScript;
-import org.jenkinsci.plugins.workflow.cps.GlobalVariable;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import org.jenkinsci.plugins.workflow.cps.CpsScript;
+import org.jenkinsci.plugins.workflow.cps.GlobalVariable;
 
 /**
  * Registers {@code withEphemeralCredentials} as a global pipeline step,
@@ -57,7 +56,8 @@ public class WithEphemeralCredentialsGlobalVariable extends GlobalVariable {
             // trusted, which we can't assume.
             Run<?, ?> run = CpsRuns.current();
             if (run == null) {
-                throw new IllegalStateException("withEphemeralCredentials can only be used from within a running Pipeline build");
+                throw new IllegalStateException(
+                        "withEphemeralCredentials can only be used from within a running Pipeline build");
             }
 
             GroovyClassLoader gcl = (GroovyClassLoader) script.getClass().getClassLoader();
@@ -70,14 +70,16 @@ public class WithEphemeralCredentialsGlobalVariable extends GlobalVariable {
             } catch (ClassNotFoundException e) {
                 clazz = gcl.parseClass(readSource(), "WithEphemeralCredentials.groovy");
             }
-            instance = clazz.getConstructor(CpsScript.class, String.class).newInstance(script, run.getExternalizableId());
+            instance =
+                    clazz.getConstructor(CpsScript.class, String.class).newInstance(script, run.getExternalizableId());
             binding.setVariable(getName(), instance);
         }
         return instance;
     }
 
     private static String readSource() throws IOException {
-        try (InputStream in = WithEphemeralCredentialsGlobalVariable.class.getClassLoader().getResourceAsStream(RESOURCE)) {
+        try (InputStream in =
+                WithEphemeralCredentialsGlobalVariable.class.getClassLoader().getResourceAsStream(RESOURCE)) {
             if (in == null) {
                 throw new IOException("Resource not found on plugin classpath: " + RESOURCE);
             }
