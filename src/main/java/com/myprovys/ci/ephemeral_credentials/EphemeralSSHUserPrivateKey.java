@@ -7,7 +7,6 @@ import hudson.model.ParameterDefinition;
 import hudson.model.PasswordParameterDefinition;
 import hudson.model.StringParameterDefinition;
 import hudson.model.TextParameterDefinition;
-
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -39,7 +38,8 @@ public class EphemeralSSHUserPrivateKey extends EphemeralCredentialSpec {
         } catch (NoClassDefFoundError e) {
             throw new IllegalStateException(
                     "ephemeralSSHUserPrivateKey('" + id + "') requires the \"SSH Credentials\" plugin "
-                            + "(https://plugins.jenkins.io/ssh-credentials/) to be installed", e);
+                            + "(https://plugins.jenkins.io/ssh-credentials/) to be installed",
+                    e);
         }
     }
 
@@ -52,9 +52,10 @@ public class EphemeralSSHUserPrivateKey extends EphemeralCredentialSpec {
         return Arrays.asList(
                 new StringParameterDefinition("username", "", "SSH username for credential '" + getId() + "'"),
                 new TextParameterDefinition("privateKey", "", "Private key (PEM) for credential '" + getId() + "'"),
-                new PasswordParameterDefinition("passphrase", "",
-                        "Private key passphrase for credential '" + getId() + "' (leave blank if none)")
-        );
+                new PasswordParameterDefinition(
+                        "passphrase",
+                        "",
+                        "Private key passphrase for credential '" + getId() + "' (leave blank if none)"));
     }
 
     @Override
@@ -64,7 +65,12 @@ public class EphemeralSSHUserPrivateKey extends EphemeralCredentialSpec {
         String passphrase = String.valueOf(answers.getOrDefault("passphrase", ""));
         BasicSSHUserPrivateKey.DirectEntryPrivateKeySource source =
                 new BasicSSHUserPrivateKey.DirectEntryPrivateKeySource(privateKey);
-        return new BasicSSHUserPrivateKey(CredentialsScope.GLOBAL, getId(), username, source,
-                passphrase.isEmpty() ? null : passphrase, getDescription());
+        return new BasicSSHUserPrivateKey(
+                CredentialsScope.GLOBAL,
+                getId(),
+                username,
+                source,
+                passphrase.isEmpty() ? null : passphrase,
+                getDescription());
     }
 }

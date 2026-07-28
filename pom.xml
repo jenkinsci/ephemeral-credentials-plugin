@@ -121,6 +121,20 @@
       <artifactId>workflow-cps</artifactId>
     </dependency>
 
+    <!-- Test-only: WithEphemeralCredentialsCustomLibraryTest, illustrating
+             a custom credential type defined in a shared library rather than
+             in this plugin. Verified against
+             https://updates.jenkins.io/download/plugins/pipeline-groovy-lib/
+             (2024-10-11 release, requires core 2.414.3, compatible with our
+             2.462.3 baseline) and .../plugins/git/ (2024-10-04, requires
+             2.440.3). -->
+    <dependency>
+      <groupId>io.jenkins.plugins</groupId>
+      <artifactId>pipeline-groovy-lib</artifactId>
+      <version>740.va_2701257fe8d</version>
+      <scope>test</scope>
+    </dependency>
+
     <dependency>
       <groupId>org.jenkins-ci.main</groupId>
       <artifactId>jenkins-test-harness</artifactId>
@@ -131,6 +145,30 @@
     <dependency>
       <groupId>org.jenkins-ci.plugins</groupId>
       <artifactId>credentials-binding</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jenkins-ci.plugins</groupId>
+      <artifactId>git</artifactId>
+      <version>5.5.2</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <!-- GitSampleRepoRule - a local, throwaway git repo to load the
+                 test shared library from, ships in the git plugin's own
+                 test-jar. -->
+      <groupId>org.jenkins-ci.plugins</groupId>
+      <artifactId>git</artifactId>
+      <version>5.5.2</version>
+      <classifier>tests</classifier>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <!-- GitSampleRepoRule's own superclass (AbstractSampleDVCSRepoRule,
+                 which actually declares write()/mkdirs()) lives here. -->
+      <groupId>org.jenkins-ci.plugins</groupId>
+      <artifactId>scm-api</artifactId>
+      <classifier>tests</classifier>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -178,44 +216,6 @@
     <dependency>
       <groupId>org.jenkinsci.plugins</groupId>
       <artifactId>pipeline-model-extensions</artifactId>
-      <scope>test</scope>
-    </dependency>
-
-    <!-- Test-only: WithEphemeralCredentialsCustomLibraryTest, illustrating
-             a custom credential type defined in a shared library rather than
-             in this plugin. Verified against
-             https://updates.jenkins.io/download/plugins/pipeline-groovy-lib/
-             (2024-10-11 release, requires core 2.414.3, compatible with our
-             2.462.3 baseline) and .../plugins/git/ (2024-10-04, requires
-             2.440.3). -->
-    <dependency>
-      <groupId>io.jenkins.plugins</groupId>
-      <artifactId>pipeline-groovy-lib</artifactId>
-      <version>740.va_2701257fe8d</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.jenkins-ci.plugins</groupId>
-      <artifactId>git</artifactId>
-      <version>5.5.2</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <!-- GitSampleRepoRule - a local, throwaway git repo to load the
-                 test shared library from, ships in the git plugin's own
-                 test-jar. -->
-      <groupId>org.jenkins-ci.plugins</groupId>
-      <artifactId>git</artifactId>
-      <version>5.5.2</version>
-      <classifier>tests</classifier>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <!-- GitSampleRepoRule's own superclass (AbstractSampleDVCSRepoRule,
-                 which actually declares write()/mkdirs()) lives here. -->
-      <groupId>org.jenkins-ci.plugins</groupId>
-      <artifactId>scm-api</artifactId>
-      <classifier>tests</classifier>
       <scope>test</scope>
     </dependency>
 

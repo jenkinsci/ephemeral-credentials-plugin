@@ -7,7 +7,6 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
-
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
@@ -139,14 +138,12 @@ public class WithEphemeralCredentialsCustomLibraryTest {
                 }
             }
             if (!run.isBuilding()) {
-                throw new AssertionError(
-                        "Build already finished (" + run.getResult() + ") without ever pausing on input(). Log:\n"
-                                + String.join("\n", run.getLog(500)));
+                throw new AssertionError("Build already finished (" + run.getResult()
+                        + ") without ever pausing on input(). Log:\n" + String.join("\n", run.getLog(500)));
             }
             Thread.sleep(200);
         }
-        throw new AssertionError(
-                "Timed out waiting for the pipeline to pause on input(). Log so far:\n"
-                        + String.join("\n", run.getLog(500)));
+        throw new AssertionError("Timed out waiting for the pipeline to pause on input(). Log so far:\n"
+                + String.join("\n", run.getLog(500)));
     }
 }

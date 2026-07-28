@@ -7,7 +7,6 @@ import com.cloudbees.plugins.credentials.impl.CertificateCredentialsImpl;
 import hudson.model.ParameterDefinition;
 import hudson.model.PasswordParameterDefinition;
 import hudson.model.TextParameterDefinition;
-
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
@@ -37,15 +36,15 @@ public class EphemeralCertificate extends EphemeralCredentialSpec {
     @Override
     public List<ParameterDefinition> inputParameters() {
         return Arrays.asList(
-                new TextParameterDefinition("keystoreBase64", "",
-                        "Base64-encoded PKCS#12 keystore for credential '" + getId() + "'"),
-                new PasswordParameterDefinition("password", "", "Keystore password for credential '" + getId() + "'")
-        );
+                new TextParameterDefinition(
+                        "keystoreBase64", "", "Base64-encoded PKCS#12 keystore for credential '" + getId() + "'"),
+                new PasswordParameterDefinition("password", "", "Keystore password for credential '" + getId() + "'"));
     }
 
     @Override
     public Credentials materialize(Map<String, Object> answers) {
-        byte[] keystoreBytes = Base64.getDecoder().decode(String.valueOf(answers.get("keystoreBase64")).trim());
+        byte[] keystoreBytes = Base64.getDecoder()
+                .decode(String.valueOf(answers.get("keystoreBase64")).trim());
         String password = String.valueOf(answers.getOrDefault("password", ""));
         CertificateCredentialsImpl.UploadedKeyStoreSource source =
                 new CertificateCredentialsImpl.UploadedKeyStoreSource(SecretBytes.fromBytes(keystoreBytes));

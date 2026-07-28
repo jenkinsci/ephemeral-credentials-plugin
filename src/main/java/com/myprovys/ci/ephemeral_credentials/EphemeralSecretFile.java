@@ -5,12 +5,11 @@ import com.cloudbees.plugins.credentials.CredentialsScope;
 import com.cloudbees.plugins.credentials.SecretBytes;
 import hudson.model.ParameterDefinition;
 import hudson.model.TextParameterDefinition;
-import org.jenkinsci.plugins.plaincredentials.impl.FileCredentialsImpl;
-
 import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import org.jenkinsci.plugins.plaincredentials.impl.FileCredentialsImpl;
 
 /**
  * Secret file. There's no clean way to have {@code input} collect a genuine
@@ -39,16 +38,15 @@ public class EphemeralSecretFile extends EphemeralCredentialSpec {
 
     @Override
     public List<ParameterDefinition> inputParameters() {
-        return Collections.singletonList(
-                new TextParameterDefinition("contentBase64", "",
-                        "Base64-encoded content for the secret file credential '" + getId() + "'")
-        );
+        return Collections.singletonList(new TextParameterDefinition(
+                "contentBase64", "", "Base64-encoded content for the secret file credential '" + getId() + "'"));
     }
 
     @Override
     public Credentials materialize(Map<String, Object> answers) {
-        byte[] content = Base64.getDecoder().decode(String.valueOf(answers.get("contentBase64")).trim());
-        return new FileCredentialsImpl(CredentialsScope.GLOBAL, getId(), getDescription(), fileName,
-                SecretBytes.fromBytes(content));
+        byte[] content = Base64.getDecoder()
+                .decode(String.valueOf(answers.get("contentBase64")).trim());
+        return new FileCredentialsImpl(
+                CredentialsScope.GLOBAL, getId(), getDescription(), fileName, SecretBytes.fromBytes(content));
     }
 }
