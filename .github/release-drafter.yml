@@ -1,3 +1,0 @@
-_extends: github:jenkinsci/.github:/.github/release-drafter.yml
-tag-template: ephemeral-credentials-provider-$NEXT_PATCH_VERSION
-version-template: $MAJOR.$MINOR.$PATCH
