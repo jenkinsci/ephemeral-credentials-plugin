@@ -56,6 +56,12 @@
              declaration would just duplicate the inherited one (and risk
              configuring the wrong formatter). -->
     <spotless.check.skip>false</spotless.check.skip>
+
+    <ban-junit4-imports.skip>false</ban-junit4-imports.skip>
+    <ban-deprecated-stapler.skip>false</ban-deprecated-stapler.skip>
+    <banObsoleteDependencyOverrides.skip>false</banObsoleteDependencyOverrides.skip>
+    <spotbugs.effort>Max</spotbugs.effort>
+    <spotbugs.threshold>Low</spotbugs.threshold>
   </properties>
 
   <!-- Several of our dependencies (workflow-cps / pipeline-input-step /
