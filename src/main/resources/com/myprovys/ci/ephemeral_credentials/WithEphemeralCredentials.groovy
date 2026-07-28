@@ -56,6 +56,9 @@ class WithEphemeralCredentials implements Serializable {
             // reaches the interactive path below.
             if (CredentialsProvider.findCredentialById(spec.id, StandardCredentials.class, Run.fromExternalizableId(runId)) == null) {
                 script.lock("ephemeral-ephemeral_credentials-${runId}-${spec.id}") {
+                    // Re-check, maybe another parallel branch has already asked
+                    // for the credential (in its locked context, before this
+                    // branch of the code flow got here):
                     if (CredentialsProvider.findCredentialById(spec.id, StandardCredentials.class, Run.fromExternalizableId(runId)) == null) {
                         List params = spec.inputParameters()
                         String message = spec.description ?: "Provide credential '${spec.id}'"

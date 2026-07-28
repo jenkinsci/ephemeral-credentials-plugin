@@ -187,6 +187,11 @@ the same technique `docker-workflow-plugin`'s `DockerDSL` uses for its
 as a shared-library script, which is what makes its calls to `lock` and `input`
 steps provided by the pipeline script context safe.
 
+Use of the `lock` step allows to limit the `input` of a previously missing
+credential to one of possibly many `parallel` or agent-bound stages that
+would want it: the first one to get the lock would ask for it, and others
+would find it already cached when their turn comes.
+
 Two non-obvious things that took several iterations against a real embedded
 Jenkins to get right, both worth knowing before touching this file:
 
