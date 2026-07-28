@@ -6,6 +6,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.cloudbees.plugins.credentials.CredentialsScope;
 import com.cloudbees.plugins.credentials.SystemCredentialsProvider;
 import com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.security.KeyStore;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
@@ -133,6 +137,82 @@ class WithEphemeralCredentialsTest {
 
         // Password should remain hidden (by credentials binding plugin).
         j.assertLogNotContains("hunter2", run);
+    }
+
+    @Test
+    @Timeout(120)
+    void sshKeySecretFileAndCertificateMaterializeCorrectly(JenkinsRule j) throws Exception {
+        // Verified by consuming each credential through the *standard*
+        // withCredentials bindings inside the pipeline itself, the same way
+        // the other tests do - not by querying EphemeralCredentialsProvider
+        // after the build finishes, since EphemeralCredentialsRunListener
+        // clears its cache for the run as soon as it's done (by design), so
+        // nothing would be left to find by then.
+        WorkflowJob p = j.jenkins.createProject(WorkflowJob.class, "other-credential-types");
+        p.setDefinition(new CpsFlowDefinition(
+                String.join(
+                        "\n",
+                        "pipeline {",
+                        "  agent any",
+                        "  stages {",
+                        "    stage('collect') {",
+                        "      steps {",
+                        "        withEphemeralCredentials([",
+                        "          ephemeralSSHUserPrivateKey(id: 'SSH_KEY', description: 'ssh key'),",
+                        "          ephemeralSecretFile(id: 'SECRET_FILE', description: 'secret file', fileName: 'creds.txt'),",
+                        "          ephemeralCertificate(id: 'CERT', description: 'cert')",
+                        "        ]) {",
+                        "          withCredentials([sshUserPrivateKey(credentialsId: 'SSH_KEY', keyFileVariable: 'KEYFILE', usernameVariable: 'SSHUSER')]) {",
+                        "            echo \"SSHUSER:${SSHUSER}\"",
+                        "            echo \"SSHKEY:${readFile(KEYFILE)}\"",
+                        "          }",
+                        "          withCredentials([file(credentialsId: 'SECRET_FILE', variable: 'SECRETFILE')]) {",
+                        "            echo \"FILECONTENT:${readFile(SECRETFILE)}\"",
+                        "          }",
+                        "          withCredentials([certificate(credentialsId: 'CERT', keystoreVariable: 'KEYSTORE', passwordVariable: 'CERTPW', aliasVariable: 'ALIAS')]) {",
+                        "            echo 'CERT_BOUND_OK'",
+                        "          }",
+                        "        }",
+                        "      }",
+                        "    }",
+                        "  }",
+                        "}"),
+                true));
+
+        WorkflowRun run = p.scheduleBuild2(0).waitForStart();
+
+        // withEphemeralCredentials resolves the declared specs one at a
+        // time, so three missing IDs pause on input() three times in a row.
+        String testKey = "-----BEGIN OPENSSH PRIVATE KEY-----\nAAAA\n-----END OPENSSH PRIVATE KEY-----";
+        waitForInput(run).proceed(Map.of("username", "deploy", "privateKey", testKey, "passphrase", ""));
+
+        String fileContent = "hello ephemeral file";
+        String fileBase64 = Base64.getEncoder().encodeToString(fileContent.getBytes(StandardCharsets.UTF_8));
+        waitForInput(run).proceed(Map.of("contentBase64", fileBase64));
+
+        // CertificateCredentialsImpl's constructor parses the keystore
+        // eagerly, so this needs to be structurally real (if otherwise
+        // empty) PKCS#12, not arbitrary bytes.
+        String keystoreBase64 = Base64.getEncoder().encodeToString(emptyPkcs12Keystore("keystorepw"));
+        waitForInput(run).proceed(Map.of("keystoreBase64", keystoreBase64, "password", "keystorepw"));
+
+        j.assertBuildStatusSuccess(j.waitForCompletion(run));
+
+        j.assertLogContains("SSHUSER:deploy", run);
+        j.assertLogContains("SSHKEY:" + testKey, run);
+        j.assertLogContains("FILECONTENT:" + fileContent, run);
+        j.assertLogContains("CERT_BOUND_OK", run);
+        j.assertLogNotContains("keystorepw", run);
+    }
+
+    /** Helper for tests: a structurally valid (if empty) PKCS#12 keystore, for
+     * exercising EphemeralCertificate without needing a real certificate. */
+    private static byte[] emptyPkcs12Keystore(String password) throws Exception {
+        KeyStore ks = KeyStore.getInstance("PKCS12");
+        ks.load(null, password.toCharArray());
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ks.store(out, password.toCharArray());
+        return out.toByteArray();
     }
 
     /** Helper for tests: stall until a pending input() is reached in the monitored pipeline.

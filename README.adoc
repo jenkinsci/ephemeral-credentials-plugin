@@ -208,25 +208,110 @@ Jenkins to get right, both worth knowing before touching this file:
   `externalizableId` String, and re-resolve `Run.fromExternalizableId(...)`
   fresh right before each synchronous use, never held across a pause.
 
-=== `ephemeralUsernamePassword` / `ephemeralSecretText` (factories)
+=== Credential type factories
 
-Also `GlobalVariable` registered extension points, but trivial ones -- each
-one returns a precompiled `groovy.lang.Closure` that builds an
-`EphemeralUsernamePassword` / `EphemeralSecretText`. Both extend the
-`EphemeralCredentialSpec` with:
+All five credential types the standard "Add Credentials" UI offers are
+wrapped, each its own `GlobalVariable` returning a precompiled
+`groovy.lang.Closure` that builds the matching `EphemeralCredentialSpec`
+subclass:
+
+[cols="1,2,3"]
+|===
+|Factory |Spec class |Materializes
+
+|`ephemeralUsernamePassword(id:, description:)`
+|`EphemeralUsernamePassword`
+|`UsernamePasswordCredentialsImpl`
+
+|`ephemeralSecretText(id:, description:)`
+|`EphemeralSecretText`
+|`StringCredentialsImpl`
+
+|`ephemeralSSHUserPrivateKey(id:, description:)`
+|`EphemeralSSHUserPrivateKey`
+|`BasicSSHUserPrivateKey` (optional dependency -- see below)
+
+|`ephemeralSecretFile(id:, description:, fileName:)`
+|`EphemeralSecretFile`
+|`FileCredentialsImpl`
+
+|`ephemeralCertificate(id:, description:)`
+|`EphemeralCertificate`
+|`CertificateCredentialsImpl`
+|===
+
+Every `EphemeralCredentialSpec` carries:
 
 * an `id`,
-* a `description` passed straight through to `input`'s `message`,
+* a `description` passed straight through to `input` step's `message`,
 * the `input` `ParameterDefinition` items to collect, and
-* logic how to turn the answers into a `Credentials` object.
+* the logic to turn the answers into a `Credentials` object.
 
-Since these global variables never invoke a pipeline step themselves,
-a plain precompiled `Closure` is fine -- no CPS transformation,
-no whitelist entries are needed for them.
+Since these factories never invoke a pipeline step themselves, a plain
+precompiled `Closure` is fine for them -- no CPS transformation, no
+whitelist entries needed (unlike `WithEphemeralCredentials.groovy` itself).
 
-Adding a new credential type means one more `EphemeralCredentialSpec`
+**Secret file and certificate collect their content as pasted base64 text,
+not a real file upload.** The `input` step's `FileParameterDefinition` writes
+the uploaded file to disk as part of its own normal handling -- in direct
+tension with this plugin's "never persisted" design -- so both specs ask
+for base64-encoded text instead (the file's raw bytes / the PKCS#12
+keystore's raw bytes, base64-encoded) and decode it entirely in memory via
+`SecretBytes.fromBytes(...)`. A pragmatic simplification, not a
+faithful reproduction of the web UI's upload widget.
+
+**`ephemeralSSHUserPrivateKey` has a soft dependency on the "SSH
+Credentials" plugin** (https://plugins.jenkins.io/ssh-credentials/) -
+unlike the other four types, which only need plugins this one already
+requires unconditionally. It's declared `<optional>true</optional>` in
+`pom.xml`, so an installation that never uses this specific credential
+type doesn't need SSH Credentials installed at all - the manifest records
+it as `resolution:=optional`. Constructor of `EphemeralSSHUserPrivateKey`
+deliberately touches `BasicSSHUserPrivateKey.class` (a class literal is
+enough to force resolution) so a missing plugin fails immediately, with a
+clear message, at the point the pipeline author declares the spec - not
+deep inside `materialize()` after a human has already answered an `input`
+prompt for nothing.
+
+Adding another credential type (e.g. for GitLab or GitHub API tokens,
+other SSH and certificate types) means one more `EphemeralCredentialSpec`
 subclass plus one more tiny factory `GlobalVariable`, following the same
 shape.
+
+=== Extending with more types: doesn't require changing this plugin
+
+`EphemeralCredentialSpec.inputParameters()`/`materialize()` never invoke a
+pipeline step: they are pure data/logic building a `ParameterDefinition`
+list and a `Credentials` object -- so a new spec subclass has none of the
+CPS/sandbox constraints `WithEphemeralCredentials.groovy` itself has.
+
+Three places a new type can live:
+
+* **This plugin**: add the subclass + factory `GlobalVariable` here, cut a
+  new release. Right choice for something broadly useful, like the five
+  standard types above.
+* **A separate plugin**: depend on `ephemeral-credentials-provider`,
+  define your own subclass + `GlobalVariable`. Only *needed* for the
+  factory/DSL-registration half, since `GlobalVariable` is a genuine
+  `ExtensionPoint` requiring `@Extension` discovery at Jenkins startup,
+  which only a real installed plugin gets.
+* **JSL - no new plugin at all.** The spec subclass can be an ordinary JSL
+  `src/` class extending this plugin's `public abstract class
+  EphemeralCredentialSpec` (its constructor is `protected`, so any
+  subclass anywhere can call `super(id, description)`). Many JSL's already
+  reference classes from other installed plugins directly today (e.g.
+  `CredentialNotFoundException` from `credentials-binding`), this is the
+  same pattern. The factory doesn't need `GlobalVariable` either: a plain
+  `vars/ephemeralXyz.groovy` with `def call(Map args) { new
+  EphemeralXyzSpec(args.id, args.description) }` becomes callable exactly
+  the way `usernamePassword(...)` reads, because JSL `vars/` files *are*
+  the native mechanism of Jenkins for contributing global callables -- no
+  explicit `@Extension`, no plugin install, just a file in the library.
+
+So a plugin release is only strictly required for the `GlobalVariable`
+registration step -- anything that's pure data (every implementation of
+an `EphemeralCredentialSpec` so far) can live in a JSL instead, with zero
+coordination against this plugin's release cycle.
 
 == Tests
 
@@ -240,7 +325,28 @@ embedded Jenkins (`JenkinsRule`, JUnit 5 `@WithJenkins`):
   `InputStepExecution.proceed(Map)`), the submitted value reaches an
   unmodified nested `withCredentials`, and a second `withEphemeralCredentials`
   call for the same ID in the same run reuses the cache instead of pausing
-  again.
+  again -- as does a *third*, completely unwrapped `withCredentials` call
+  later in the same run, confirming the cache is genuinely visible to
+  code that never calls `withEphemeralCredentials` at all.
+* `sshKeySecretFileAndCertificateMaterializeCorrectly`: all three of the
+  newer credential types (initial support/PoC focused on `EphemeralSecretText`
+  and `EphemeralUsernamePassword`), resolved in one `withEphemeralCredentials`
+  block (three sequential `input` pauses), each consumed through its standard
+  `withCredentials` binding (`sshUserPrivateKey`/`file`/`certificate`)
+  inside the same pipeline run -- not by querying
+  `EphemeralCredentialsProvider` after the build finishes, since
+  `EphemeralCredentialsRunListener` clears the cache for a run as soon as
+  it's done, so nothing would be left to find by then.
+
+The `ssh-credentials` plugin is present on this project's own test classpath
+(it is a normal, if `optional`, compile dependency of this plugin: `optional`
+only affects whether it propagates to consumers of *this* artifact, not
+whether it's available here), so the "plugin genuinely absent" code path for
+`ephemeralSSHUserPrivateKey` isn't exercised by an automated test -- that
+guarantee rests on the well-understood JVM behavior described above
+(a class literal inside a method is resolved when that method runs, not
+when the enclosing class loads), rather than on a harness rigged to remove
+an already-declared dependency.
 
 Run with `mvn test`.
 
