@@ -31,6 +31,7 @@ import edu.umd.cs.findbugs.annotations.NonNull;
 import edu.umd.cs.findbugs.annotations.Nullable;
 import hudson.Extension;
 import hudson.ExtensionList;
+import hudson.model.Item;
 import hudson.model.ItemGroup;
 import hudson.model.Run;
 import java.util.ArrayList;
@@ -77,16 +78,35 @@ import org.springframework.security.core.Authentication;
  * the Jenkinsfile itself). It does <b>not</b> resolve when the caller is a
  * step's own internal Java implementation running off the CPS interpreter
  * thread entirely - confirmed empirically against a real embedded Jenkins:
- * {@code ephemeral_credentials-binding}'s {@code withCredentials} performs its own
+ * {@code credentials-binding}'s {@code withCredentials} performs its own
  * {@code findCredentialById} call from such a thread, where
- * {@code CpsThread.current()} is {@code null}. In that case we fall back to
- * considering every run's cache and let the caller's own by-ID filtering
- * (e.g. {@code CredentialsProvider.findCredentialById}) pick the right
- * entry. This is correct as long as two different runs aren't concurrently
- * caching different values under the exact same literal credential ID at the
- * same time - a real, narrow residual risk, not a theoretical one, worth
- * weighing against how likely concurrent builds of the same job are for
- * whatever pipeline uses this.</p>
+ * {@code CpsThread.current()} is {@code null}.</p>
+ *
+ * <h2>The unidentifiable-run fallback, and why it's scoped to {@code itemGroup}</h2>
+ * <p>When the run can't be identified, this falls back to considering other
+ * runs' caches too and lets the caller's own by-ID filtering (e.g. {@code
+ * CredentialsProvider.findCredentialById}) pick the right entry - but
+ * <b>only among runs whose job lives within the {@code itemGroup} this
+ * method was actually asked about</b>, not literally every cached run
+ * project-wide. This matters: tracing {@code credentials-binding}'s actual
+ * call path (its {@code Run}-based {@code findCredentialById} overload,
+ * through {@code findCredentialByIdInItem(id, type, run.getParent(), ...)})
+ * confirms that {@code itemGroup} here is the calling job's own containing
+ * folder (or Jenkins root) - Jenkins' extension API simply never passes the
+ * specific calling {@code Run} this deep, so there is no way to identify
+ * the exact run from this method's parameters alone. Without the {@code
+ * itemGroup} scoping, an unfiltered "every cached run" fallback would let a
+ * build in one folder receive another, unrelated build's ephemeral value
+ * from a completely different folder/team/permission scope, purely because
+ * both happened to cache something under the same literal credential ID at
+ * the same time - a genuine cross-tenant credential leak, not a theoretical
+ * one, since Jenkins folder-scoped credentials exist specifically to
+ * enforce that boundary. Scoping the fallback to {@code itemGroup}
+ * containment restores that boundary. A narrower residual risk remains:
+ * two concurrent runs of the same or sibling jobs *within the same folder
+ * scope*, caching different values under the same literal ID, can still
+ * collide - weigh that against how likely concurrent builds sharing an ID
+ * are for whatever pipeline uses this.</p>
  */
 @Extension
 public class EphemeralCredentialsProvider extends CredentialsProvider {
@@ -115,9 +135,18 @@ public class EphemeralCredentialsProvider extends CredentialsProvider {
                     + (forRun == null ? "no ephemeral cache for it" : forRun.size() + " entries cached"));
         } else {
             // See the class javadoc: can't identify the run, so consider
-            // every run's cache and let by-ID filtering downstream sort it
-            // out.
-            candidates = byRun.values();
+            // other runs' caches too, but only those whose job lives within
+            // the itemGroup we were actually asked about (e.g. a job Folder) -
+            // not literally every cached run server-wide - and let by-ID filtering
+            // downstream (e.g. CredentialsProvider.findCredentialById) pick
+            // the right entry among those.
+            List<Map<String, Credentials>> scoped = new ArrayList<>();
+            for (Map.Entry<String, Map<String, Credentials>> entry : byRun.entrySet()) {
+                Run<?, ?> candidateRun = Run.fromExternalizableId(entry.getKey());
+                if (candidateRun != null && isWithin(itemGroup, candidateRun)) {
+                    scoped.add(entry.getValue());
+                }
+            }
             candidates = scoped;
             LOGGER.fine(() -> "getCredentialsInItemGroup: run not identified, falling back to " + scoped.size()
                     + " run(s) cached within itemGroup " + itemGroup.getFullName());
@@ -134,6 +163,24 @@ public class EphemeralCredentialsProvider extends CredentialsProvider {
         LOGGER.fine(() -> "getCredentialsInItemGroup: returning " + result.size() + " candidate(s) of type "
                 + type.getSimpleName());
         return result;
+    }
+
+    /**
+     * Whether {@code run}'s own job lives inside {@code itemGroup} itself,
+     * or inside any folder nested within it - the same direction Jenkins'
+     * own folder-scoped credential visibility works (a folder's items can
+     * see credentials scoped at that folder or an ancestor, never the
+     * reverse).
+     */
+    private static boolean isWithin(@NonNull ItemGroup<?> itemGroup, @NonNull Run<?, ?> run) {
+        ItemGroup<?> container = run.getParent().getParent();
+        while (container != null) {
+            if (container == itemGroup) {
+                return true;
+            }
+            container = (container instanceof Item) ? ((Item) container).getParent() : null;
+        }
+        return false;
     }
 
     /**
