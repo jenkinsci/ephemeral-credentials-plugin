@@ -23,6 +23,8 @@
  */
 package io.jenkins.plugins.ephemeral_credentials
 
+import com.cloudbees.groovy.cps.NonCPS
+import com.cloudbees.plugins.credentials.Credentials
 import com.cloudbees.plugins.credentials.CredentialsProvider
 import com.cloudbees.plugins.credentials.common.StandardCredentials
 import hudson.model.Run
@@ -65,22 +67,42 @@ import java.util.logging.Logger
  * only resolve {@code Run.fromExternalizableId(...)} afterwards, once
  * {@code input} has already returned and nothing is pending a suspend.</p>
  *
- * <p>{@code input}'s own answer is never held across a further pause point
- * either: it flows straight from {@code script.input(...)} into
- * {@link EphemeralCredentialSpec#materialize}, then into
- * {@code EphemeralCredentialsProvider.put(...)}, with no other step call
- * (hence no further CPS checkpoint) happening in between - CPS's own
- * program-state persistence to {@code program.dat} is tied to step
- * invocations, not to plain statement execution, so nothing forces a
- * mid-computation write here. (A {@code @NonCPS} helper method was tried
- * here for extra assurance and reverted: {@link EphemeralCredentialSpec}
- * subclasses aren't necessarily plain precompiled Java the way this
- * plugin's own five are - one defined in a JSL {@code src/} class (see
- * "Extending with more types" in the README) is itself CPS-transformed
- * Groovy, and a {@code @NonCPS} method can't call into CPS-transformed code
- * at all - confirmed empirically: it fails every such call with {@code
- * CpsCallableInvocation}'s "expected to call X but wound up catching Y"
- * mismatch error, breaking that entire extension mechanism.)</p>
+ * <p>{@code input}'s own answer is never assigned to a named variable
+ * either: it flows straight from {@code script.input(...)} into {@link
+ * EphemeralCredentialSpec#materialize}, whose result is passed directly as
+ * an argument to {@link #privatePut}. That split matters for two
+ * independent reasons:</p>
+ * <ul>
+ *     <li>{@link #privatePut} is the <em>only</em> thing that ever resolves
+ *     {@code Run.fromExternalizableId(runId)} on this path, and it does so
+ *     from inside a method whose arguments (the credential ID and an
+ *     already-fully-materialized {@link Credentials} object) are only
+ *     evaluated - meaning {@code script.input(...)} has already returned -
+ *     before {@link #privatePut} is ever entered. There is no expression
+ *     anywhere that holds a live, non-serializable {@code Run} as a
+ *     "pending" argument sibling to a step call the way the earlier broken
+ *     version did (see above).</li>
+ *     <li>{@link #privatePut} is annotated {@code @NonCPS}, so it runs as
+ *     ordinary, non-suspendable code with no CPS continuation of its own -
+ *     a stronger guarantee than merely "no step call happens in between"
+ *     (relying on CPS's checkpoints being tied to step invocations, not
+ *     plain statement execution). This is safe to do here - unlike an
+ *     earlier, broader attempt at wrapping the whole
+ *     materialize-and-cache logic in {@code @NonCPS}, which was reverted -
+ *     because {@link #privatePut} itself never calls {@link
+ *     EphemeralCredentialSpec#materialize}: that still happens in {@link
+ *     #call}'s own CPS-transformed code, where it belongs, since a custom
+ *     {@link EphemeralCredentialSpec} defined as a JSL {@code src/} class
+ *     (see "Extending with more types" in the README) is itself
+ *     CPS-transformed Groovy, and a {@code @NonCPS} method cannot call into
+ *     CPS-transformed code at all - confirmed empirically: the earlier
+ *     attempt failed every such call with {@code CpsCallableInvocation}'s
+ *     "expected to call X but wound up catching Y" mismatch error, breaking
+ *     that entire extension mechanism. {@link #privatePut} only ever
+ *     touches plain, always-precompiled types ({@code Run}, {@link
+ *     Credentials}, {@link EphemeralCredentialsProvider}), so it has no
+ *     such risk.</li>
+ * </ul>
  *
  * <p>This step requires that the CPS script context provides the
  * {@code input} and {@code lock} steps provided by "pipeline-input-step"
@@ -137,15 +159,12 @@ class WithEphemeralCredentials implements Serializable {
                         String message = spec.description ?: "Provide credential '${spec.id}'"
                         try {
                             script.echo("Waiting for input of credential '${spec.id}'" + (spec.description ? ": " + spec.description : ""))
-                            // Avoid storing the input step output in a named
-                            // groovy variable, so it can not be serialized by CPS:
-                            if (params.size() == 1) {
-                                EphemeralCredentialsProvider.get().put(Run.fromExternalizableId(runId), spec.id, spec.materialize(
-                                    [(params[0].name): script.input(message: message, parameters: params)]))
-                            } else {
-                                EphemeralCredentialsProvider.get().put(Run.fromExternalizableId(runId), spec.id, spec.materialize(
-                                        (Map)(script.input(message: message, parameters: params))))
-                            }
+                            // Avoid storing the input() step output in a named
+                            // groovy variable, so it can not be serialized by CPS.
+                            // The Run to key by is resolved inside privatePut().
+                            privatePut(spec.id, spec.materialize(params.size() == 1
+                                    ? [(params[0].name): script.input(message: message, parameters: params)]
+                                    : (Map) script.input(message: message, parameters: params)))
                             LOGGER.fine("call: '" + spec.id + "' collected via input and cached for " + runId)
                         } catch (FlowInterruptedException e) {
                             // Only swallow a genuine "user clicked Abort on
@@ -174,5 +193,15 @@ class WithEphemeralCredentials implements Serializable {
         }
 
         return body()
+    }
+
+    /**
+     * Caches an already-materialized credential for this run - see the
+     * class javadoc for why this is safe to mark {@code @NonCPS} here,
+     * unlike the broader attempt in earlier iterations that was reverted.
+     */
+    @NonCPS
+    private void privatePut(String credentialsId, Credentials credentials) {
+        EphemeralCredentialsProvider.get().put(Run.fromExternalizableId(runId), credentialsId, credentials)
     }
 }
