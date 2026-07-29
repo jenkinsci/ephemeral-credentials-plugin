@@ -103,10 +103,12 @@
 
   <dependencies>
     <dependency>
-      <!-- Community plugin, not part of the Jenkins-org BOM - version
-                 verified against internal JSL build.gradle.kts, which
-                 already pins this exact release for the same core baseline.
-        -->
+      <!-- Community plugin, not directly declared in this project's own
+                 imported BOM's dependencyManagement - but IS resolvable
+                 from it with no explicit version here, via a chain of
+                 further BOM imports that eventually reaches bom-weekly
+                 (see README's Build section for how this was traced). No
+                 longer pinned by hand. -->
       <groupId>org.6wind.jenkins</groupId>
       <artifactId>lockable-resources</artifactId>
     </dependency>
