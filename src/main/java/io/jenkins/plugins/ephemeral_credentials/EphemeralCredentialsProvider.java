@@ -133,6 +133,8 @@ public class EphemeralCredentialsProvider extends CredentialsProvider {
             candidates = (forRun == null ? Collections.emptyList() : Collections.singletonList(forRun));
             LOGGER.fine(() -> "getCredentialsInItemGroup: run identified as " + run.getExternalizableId() + ", "
                     + (forRun == null ? "no ephemeral cache for it" : forRun.size() + " entries cached"));
+            System.err.println("DIAGNOSTIC identified-run thread: name='" + Thread.currentThread().getName()
+                    + "' id=" + Thread.currentThread().getId() + " run=" + run.getExternalizableId());
         } else {
             // See the class javadoc: can't identify the run, so consider
             // other runs' caches too, but only those whose job lives within
@@ -150,6 +152,9 @@ public class EphemeralCredentialsProvider extends CredentialsProvider {
             candidates = scoped;
             LOGGER.fine(() -> "getCredentialsInItemGroup: run not identified, falling back to " + scoped.size()
                     + " run(s) cached within itemGroup " + itemGroup.getFullName());
+            System.err.println("DIAGNOSTIC unidentifiable-run thread: name='"
+                    + Thread.currentThread().getName() + "' id=" + Thread.currentThread().getId()
+                    + " class=" + Thread.currentThread().getClass().getName());
         }
 
         List<C> result = new ArrayList<>();
