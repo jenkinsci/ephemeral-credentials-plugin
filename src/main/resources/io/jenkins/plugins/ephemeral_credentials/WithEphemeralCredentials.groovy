@@ -150,7 +150,7 @@ class WithEphemeralCredentials implements Serializable {
             // value itself, only whether one was found and where.
             if (CredentialsProvider.findCredentialById(spec.id, StandardCredentials.class, Run.fromExternalizableId(runId)) == null) {
                 LOGGER.fine("call: '" + spec.id + "' not found in any store for " + runId + " - will collect interactively")
-                script.lock("ephemeral-ephemeral_credentials-${runId}-${spec.id}") {
+                script.lock("ephemeral_credentials-${runId}-${spec.id}") {
                     // Re-check, maybe another parallel branch has already asked
                     // for the credential (in its locked context, before this
                     // branch of the code flow got here):
