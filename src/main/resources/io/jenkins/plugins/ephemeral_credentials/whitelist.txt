@@ -8,3 +8,5 @@ method io.jenkins.plugins.ephemeral_credentials.EphemeralCredentialSpec inputPar
 method io.jenkins.plugins.ephemeral_credentials.EphemeralCredentialSpec materialize java.util.Map
 method hudson.model.ParameterDefinition getName
 method org.jenkinsci.plugins.workflow.steps.FlowInterruptedException getCauses
+staticMethod java.util.logging.Logger getLogger java.lang.String
+method java.util.logging.Logger fine java.lang.String

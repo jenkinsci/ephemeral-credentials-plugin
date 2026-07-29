@@ -30,6 +30,8 @@ import org.jenkinsci.plugins.workflow.cps.CpsScript
 import org.jenkinsci.plugins.workflow.steps.FlowInterruptedException
 import org.jenkinsci.plugins.workflow.support.steps.input.Rejection
 
+import java.util.logging.Logger
+
 /**
  * <p>Backs the {@code withEphemeralCredentials} global step. Shipped as Groovy
  * source (not precompiled) so that, when loaded via the calling build's own
@@ -102,6 +104,8 @@ class WithEphemeralCredentials implements Serializable {
 
     private static final long serialVersionUID = 1L
 
+    private static final Logger LOGGER = Logger.getLogger(WithEphemeralCredentials.class.getName())
+
     private final CpsScript script
     private final String runId
 
@@ -117,7 +121,13 @@ class WithEphemeralCredentials implements Serializable {
             // ephemeral one too), so an ID that's already resolvable
             // anywhere else is left alone; only a genuinely missing one
             // reaches the interactive path below.
+            //
+            // Logged at FINE, not echoed to the build console: this goes to
+            // Jenkins' own system log (java.util.logging), same as
+            // EphemeralCredentialsProvider's own logging - never the secret
+            // value itself, only whether one was found and where.
             if (CredentialsProvider.findCredentialById(spec.id, StandardCredentials.class, Run.fromExternalizableId(runId)) == null) {
+                LOGGER.fine("call: '" + spec.id + "' not found in any store for " + runId + " - will collect interactively")
                 script.lock("ephemeral-ephemeral_credentials-${runId}-${spec.id}") {
                     // Re-check, maybe another parallel branch has already asked
                     // for the credential (in its locked context, before this
@@ -136,6 +146,7 @@ class WithEphemeralCredentials implements Serializable {
                                 EphemeralCredentialsProvider.get().put(Run.fromExternalizableId(runId), spec.id, spec.materialize(
                                         (Map)(script.input(message: message, parameters: params))))
                             }
+                            LOGGER.fine("call: '" + spec.id + "' collected via input and cached for " + runId)
                         } catch (FlowInterruptedException e) {
                             // Only swallow a genuine "user clicked Abort on
                             // this input" - identifiable by a Rejection
@@ -149,9 +160,16 @@ class WithEphemeralCredentials implements Serializable {
                                 throw e
                             }
                             script.echo("Credential '${spec.id}' was not provided (input declined) - continuing without it.")
+                            LOGGER.fine("call: '" + spec.id + "' input declined for " + runId + " - not cached")
                         }
+                    } else {
+                        LOGGER.fine("call: '" + spec.id + "' found already cached for " + runId
+                                + " by a parallel branch while waiting for the lock")
                     }
                 }
+            } else {
+                LOGGER.fine("call: '" + spec.id + "' already resolvable via an existing store for " + runId
+                        + " - no input needed")
             }
         }
 

@@ -39,6 +39,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Logger;
 import org.jenkinsci.plugins.workflow.cps.CpsThread;
 import org.springframework.security.core.Authentication;
 
@@ -90,6 +91,8 @@ import org.springframework.security.core.Authentication;
 @Extension
 public class EphemeralCredentialsProvider extends CredentialsProvider {
 
+    private static final Logger LOGGER = Logger.getLogger(EphemeralCredentialsProvider.class.getName());
+
     private final Map<String, Map<String, Credentials>> byRun = new ConcurrentHashMap<>();
 
     public static EphemeralCredentialsProvider get() {
@@ -107,12 +110,17 @@ public class EphemeralCredentialsProvider extends CredentialsProvider {
         Collection<Map<String, Credentials>> candidates;
         if (run != null) {
             Map<String, Credentials> forRun = byRun.get(run.getExternalizableId());
-            candidates = forRun == null ? Collections.emptyList() : Collections.singletonList(forRun);
+            candidates = (forRun == null ? Collections.emptyList() : Collections.singletonList(forRun));
+            LOGGER.fine(() -> "getCredentialsInItemGroup: run identified as " + run.getExternalizableId() + ", "
+                    + (forRun == null ? "no ephemeral cache for it" : forRun.size() + " entries cached"));
         } else {
             // See the class javadoc: can't identify the run, so consider
             // every run's cache and let by-ID filtering downstream sort it
             // out.
             candidates = byRun.values();
+            candidates = scoped;
+            LOGGER.fine(() -> "getCredentialsInItemGroup: run not identified, falling back to " + scoped.size()
+                    + " run(s) cached within itemGroup " + itemGroup.getFullName());
         }
 
         List<C> result = new ArrayList<>();
@@ -123,6 +131,8 @@ public class EphemeralCredentialsProvider extends CredentialsProvider {
                 }
             }
         }
+        LOGGER.fine(() -> "getCredentialsInItemGroup: returning " + result.size() + " candidate(s) of type "
+                + type.getSimpleName());
         return result;
     }
 
@@ -133,12 +143,17 @@ public class EphemeralCredentialsProvider extends CredentialsProvider {
     public void put(@NonNull Run<?, ?> run, @NonNull String credentialsId, @NonNull Credentials credentials) {
         byRun.computeIfAbsent(run.getExternalizableId(), key -> new ConcurrentHashMap<>())
                 .put(credentialsId, credentials);
+        LOGGER.fine(() ->
+                "put: cached '" + credentialsId + "' for " + run.getExternalizableId() + " (never the value itself)");
     }
 
     @CheckForNull
     public Credentials find(@NonNull Run<?, ?> run, @NonNull String credentialsId) {
         Map<String, Credentials> forRun = byRun.get(run.getExternalizableId());
-        return forRun == null ? null : forRun.get(credentialsId);
+        Credentials found = (forRun == null ? null : forRun.get(credentialsId));
+        LOGGER.fine(() -> "find: '" + credentialsId + "' for " + run.getExternalizableId() + " - "
+                + (found == null ? "not found" : "found"));
+        return found;
     }
 
     public boolean has(@NonNull Run<?, ?> run, @NonNull String credentialsId) {
@@ -153,6 +168,8 @@ public class EphemeralCredentialsProvider extends CredentialsProvider {
      * since a hard-killed build can skip the latter entirely.
      */
     public void forget(@NonNull Run<?, ?> run) {
-        byRun.remove(run.getExternalizableId());
+        Map<String, Credentials> removed = byRun.remove(run.getExternalizableId());
+        LOGGER.fine(() -> "forget: dropped " + (removed == null ? 0 : removed.size()) + " entries for "
+                + run.getExternalizableId());
     }
 }
