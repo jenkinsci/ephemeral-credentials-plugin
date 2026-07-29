@@ -219,4 +219,22 @@ public class EphemeralCredentialsProvider extends CredentialsProvider {
         LOGGER.fine(() -> "forget: dropped " + (removed == null ? 0 : removed.size()) + " entries for "
                 + run.getExternalizableId());
     }
+
+    /**
+     * Drops just {@code credentialsId} from {@code run}'s cache, leaving
+     * any other entries for that run untouched - unlike {@link #forget(Run)},
+     * which is the whole-run cleanup path called only by {@link
+     * EphemeralCredentialsRunListener}. This overload is what backs the
+     * pipeline-facing {@code ephemeralCredentialsForget}/{@code
+     * EphemeralCredentialsAccessor} single-entry removal.
+     *
+     * @return whether an entry was actually present and removed.
+     */
+    public boolean forget(@NonNull Run<?, ?> run, @NonNull String credentialsId) {
+        Map<String, Credentials> forRun = byRun.get(run.getExternalizableId());
+        boolean removed = forRun != null && forRun.remove(credentialsId) != null;
+        LOGGER.fine(() -> "forget: '" + credentialsId + "' for " + run.getExternalizableId() + " - "
+                + (removed ? "removed" : "was not present"));
+        return removed;
+    }
 }

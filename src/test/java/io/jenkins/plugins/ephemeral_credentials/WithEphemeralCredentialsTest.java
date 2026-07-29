@@ -287,6 +287,86 @@ class WithEphemeralCredentialsTest {
         j.assertLogNotContains("s3cret2", run);
     }
 
+    @Test
+    @Timeout(120)
+    void managementStepsAndMapStyleAccessWork(JenkinsRule j) throws Exception {
+        // No input() pauses anywhere in this test: everything is pre-populated
+        // programmatically via the new ephemeralCredentialsXxx steps and the
+        // ephemeralCredentials map-like global variable, then consumed through
+        // the standard withCredentials binding to confirm real integration
+        // with the ordinary credential lookup path (not just that the new
+        // steps' own find()/has() agree with themselves).
+        WorkflowJob p = j.jenkins.createProject(WorkflowJob.class, "manage-ephemeral-credentials");
+        p.setDefinition(new CpsFlowDefinition(
+                String.join(
+                        "\n",
+                        "pipeline {",
+                        "  agent any",
+                        "  stages {",
+                        "    stage('put-via-spec-and-consume') {",
+                        "      steps {",
+                        "        script {",
+                        "          ephemeralCredentialsPut(spec: ephemeralUsernamePassword(id: 'PUT_SPEC', description: 'x'), values: [username: 'putuser', password: 'putpass'])",
+                        "        }",
+                        "        withCredentials([usernamePassword(credentialsId: 'PUT_SPEC', usernameVariable: 'U', passwordVariable: 'P')]) {",
+                        "          echo \"CONSUMED:${U}:${P}\"",
+                        "        }",
+                        "      }",
+                        "    }",
+                        "    stage('query-and-map-style') {",
+                        "      steps {",
+                        "        script {",
+                        "          echo \"HAS_BEFORE:${ephemeralCredentialsHas('PUT_SPEC')}\"",
+                        "          def found = ephemeralCredentialsFind('PUT_SPEC')",
+                        "          echo \"FOUND_NOT_NULL:${found != null}\"",
+                        // A Credentials object's own getId() is fixed at construction time (baked in by
+                        // materialize()), so demonstrating the id:/credentials: shape (simulating a
+                        // credential built from some other source entirely) needs a freshly-materialized
+                        // object whose own ID actually matches - reusing 'found' (whose own ID is
+                        // permanently 'PUT_SPEC') under a different key would store something no normal
+                        // lookup could ever find, since those match by the credential's own getId(), not
+                        // by this store's key.
+                        "          ephemeralCredentialsPut(id: 'PUT_RAW', credentials: ephemeralUsernamePassword(id: 'PUT_RAW', description: 'y').materialize([username: 'rawuser', password: 'rawpass']))",
+                        "          ephemeralCredentials['MAP_ID'] = ephemeralUsernamePassword(id: 'MAP_ID', description: 'z').materialize([username: 'mapuser', password: 'mappass'])",
+                        "          echo \"MAP_HAS:${ephemeralCredentials.containsKey('MAP_ID')}\"",
+                        "          echo \"MAP_GET_NOT_NULL:${ephemeralCredentials['MAP_ID'] != null}\"",
+                        "        }",
+                        "        withCredentials([usernamePassword(credentialsId: 'PUT_RAW', usernameVariable: 'U1', passwordVariable: 'P1')]) {",
+                        "          echo \"RAW_CONSUMED:${U1}:${P1}\"",
+                        "        }",
+                        "        withCredentials([usernamePassword(credentialsId: 'MAP_ID', usernameVariable: 'U2', passwordVariable: 'P2')]) {",
+                        "          echo \"MAP_CONSUMED:${U2}:${P2}\"",
+                        "        }",
+                        "        script {",
+                        "          echo \"MAP_REMOVE_RESULT:${ephemeralCredentials.remove('MAP_ID')}\"",
+                        "          echo \"MAP_HAS_AFTER_REMOVE:${ephemeralCredentials.containsKey('MAP_ID')}\"",
+                        "          echo \"FORGET_RESULT:${ephemeralCredentialsForget('PUT_SPEC')}\"",
+                        "          echo \"HAS_AFTER_FORGET:${ephemeralCredentialsHas('PUT_SPEC')}\"",
+                        "        }",
+                        "      }",
+                        "    }",
+                        "  }",
+                        "}"),
+                true));
+
+        WorkflowRun run = j.assertBuildStatusSuccess(p.scheduleBuild2(0));
+
+        j.assertLogContains("CONSUMED:putuser:", run);
+        j.assertLogContains("HAS_BEFORE:true", run);
+        j.assertLogContains("FOUND_NOT_NULL:true", run);
+        j.assertLogContains("RAW_CONSUMED:rawuser:", run);
+        j.assertLogContains("MAP_HAS:true", run);
+        j.assertLogContains("MAP_GET_NOT_NULL:true", run);
+        j.assertLogContains("MAP_CONSUMED:mapuser:", run);
+        j.assertLogContains("MAP_REMOVE_RESULT:true", run);
+        j.assertLogContains("MAP_HAS_AFTER_REMOVE:false", run);
+        j.assertLogContains("FORGET_RESULT:true", run);
+        j.assertLogContains("HAS_AFTER_FORGET:false", run);
+        j.assertLogNotContains("putpass", run);
+        j.assertLogNotContains("rawpass", run);
+        j.assertLogNotContains("mappass", run);
+    }
+
     /** Helper for tests: a structurally valid (if empty) PKCS#12 keystore, for
      * exercising EphemeralCertificate without needing a real certificate. */
     private static byte[] emptyPkcs12Keystore(String password) throws Exception {
