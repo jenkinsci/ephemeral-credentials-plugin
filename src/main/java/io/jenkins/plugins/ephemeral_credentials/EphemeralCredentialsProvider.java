@@ -82,6 +82,26 @@ import org.springframework.security.core.Authentication;
  * {@code findCredentialById} call from such a thread, where
  * {@code CpsThread.current()} is {@code null}.</p>
  *
+ * <p><b>{@code Thread.currentThread().getName()} was considered, and
+ * measured, as a possible substitute or supplement - it doesn't help.</b>
+ * Logging the actual thread name/id at both call sites against a real
+ * embedded Jenkins running several concurrent jobs showed: when {@code
+ * CpsThread.current()} already succeeds, the executing thread happens to be
+ * named {@code "Running CpsFlowExecution[<jobName>#<buildNumber>]"} - but a
+ * shared executor pool renames whichever physical thread is currently
+ * running a given execution, so this is only meaningful read synchronously
+ * at the moment of the call, and we don't need it there anyway since {@link
+ * CpsRuns#current()} already resolves the run correctly. In the one case
+ * that actually needs help - {@code credentials-binding}'s call, where
+ * {@code CpsThread.current()} is {@code null} - the thread is consistently
+ * named {@code "org.jenkinsci.plugins.workflow.steps.
+ * SynchronousNonBlockingStepExecution [#1]"} with the same thread ID, for
+ * every different job/run that triggers it: one shared, generic worker
+ * thread with zero run-specific information, not a per-run or even
+ * per-job-family name. So thread identity carries no signal precisely where
+ * a signal would be useful, confirming the {@code itemGroup}-scoped
+ * fallback below is genuinely necessary, not just a convenient shortcut.</p>
+ *
  * <h2>The unidentifiable-run fallback, and why it's scoped to {@code itemGroup}</h2>
  * <p>When the run can't be identified, this falls back to considering other
  * runs' caches too and lets the caller's own by-ID filtering (e.g. {@code
@@ -133,8 +153,6 @@ public class EphemeralCredentialsProvider extends CredentialsProvider {
             candidates = (forRun == null ? Collections.emptyList() : Collections.singletonList(forRun));
             LOGGER.fine(() -> "getCredentialsInItemGroup: run identified as " + run.getExternalizableId() + ", "
                     + (forRun == null ? "no ephemeral cache for it" : forRun.size() + " entries cached"));
-            System.err.println("DIAGNOSTIC identified-run thread: name='" + Thread.currentThread().getName()
-                    + "' id=" + Thread.currentThread().getId() + " run=" + run.getExternalizableId());
         } else {
             // See the class javadoc: can't identify the run, so consider
             // other runs' caches too, but only those whose job lives within
@@ -152,9 +170,6 @@ public class EphemeralCredentialsProvider extends CredentialsProvider {
             candidates = scoped;
             LOGGER.fine(() -> "getCredentialsInItemGroup: run not identified, falling back to " + scoped.size()
                     + " run(s) cached within itemGroup " + itemGroup.getFullName());
-            System.err.println("DIAGNOSTIC unidentifiable-run thread: name='"
-                    + Thread.currentThread().getName() + "' id=" + Thread.currentThread().getId()
-                    + " class=" + Thread.currentThread().getClass().getName());
         }
 
         List<C> result = new ArrayList<>();
