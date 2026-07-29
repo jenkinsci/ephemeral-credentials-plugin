@@ -48,7 +48,37 @@ import org.jenkinsci.plugins.workflow.support.steps.input.Rejection
  * via {@code Run.fromExternalizableId(...)} and never held across a
  * {@code lock}/{@code input} pause point - same reasoning applies to
  * the {@code EphemeralCredentialsProvider} singleton, fetched fresh
- * rather than cached in a field.</p>
+ * rather than cached in a field. This is a real, confirmed failure mode,
+ * not just a defensive style rule: an intermediate version of {@link #call}
+ * evaluated {@code Run.fromExternalizableId(runId)} as one argument of the
+ * same {@code EphemeralCredentialsProvider.get().put(...)} call whose
+ * *other* argument was {@code script.input(...)} - Groovy evaluates
+ * arguments left to right, so the freshly-resolved, non-serializable
+ * {@code Run} became a pending argument sitting in the continuation
+ * exactly while {@code input} was suspended waiting for a human. The next
+ * time CPS checkpointed the paused program to {@code program.dat}, that
+ * failed with {@code NotSerializableException: WorkflowRun}, breaking the
+ * pipeline (confirmed against a real embedded Jenkins). The fix is what's
+ * here now: capture {@code input}'s answer into a plain local first, and
+ * only resolve {@code Run.fromExternalizableId(...)} afterwards, once
+ * {@code input} has already returned and nothing is pending a suspend.</p>
+ *
+ * <p>{@code input}'s own answer is never held across a further pause point
+ * either: it flows straight from {@code script.input(...)} into
+ * {@link EphemeralCredentialSpec#materialize}, then into
+ * {@code EphemeralCredentialsProvider.put(...)}, with no other step call
+ * (hence no further CPS checkpoint) happening in between - CPS's own
+ * program-state persistence to {@code program.dat} is tied to step
+ * invocations, not to plain statement execution, so nothing forces a
+ * mid-computation write here. (A {@code @NonCPS} helper method was tried
+ * here for extra assurance and reverted: {@link EphemeralCredentialSpec}
+ * subclasses aren't necessarily plain precompiled Java the way this
+ * plugin's own five are - one defined in a JSL {@code src/} class (see
+ * "Extending with more types" in the README) is itself CPS-transformed
+ * Groovy, and a {@code @NonCPS} method can't call into CPS-transformed code
+ * at all - confirmed empirically: it fails every such call with {@code
+ * CpsCallableInvocation}'s "expected to call X but wound up catching Y"
+ * mismatch error, breaking that entire extension mechanism.)</p>
  *
  * <p>This step requires that the CPS script context provides the
  * {@code input} and {@code lock} steps provided by "pipeline-input-step"
@@ -97,9 +127,15 @@ class WithEphemeralCredentials implements Serializable {
                         String message = spec.description ?: "Provide credential '${spec.id}'"
                         try {
                             script.echo("Waiting for input of credential '${spec.id}'" + (spec.description ? ": " + spec.description : ""))
-                            def raw = script.input(message: message, parameters: params)
-                            Map values = params.size() == 1 ? [(params[0].name): raw] : raw
-                            EphemeralCredentialsProvider.get().put(Run.fromExternalizableId(runId), spec.id, spec.materialize(values))
+                            // Avoid storing the input step output in a named
+                            // groovy variable, so it can not be serialized by CPS:
+                            if (params.size() == 1) {
+                                EphemeralCredentialsProvider.get().put(Run.fromExternalizableId(runId), spec.id, spec.materialize(
+                                    [(params[0].name): script.input(message: message, parameters: params)]))
+                            } else {
+                                EphemeralCredentialsProvider.get().put(Run.fromExternalizableId(runId), spec.id, spec.materialize(
+                                        (Map)(script.input(message: message, parameters: params))))
+                            }
                         } catch (FlowInterruptedException e) {
                             // Only swallow a genuine "user clicked Abort on
                             // this input" - identifiable by a Rejection

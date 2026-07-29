@@ -27,7 +27,8 @@ import com.cloudbees.plugins.credentials.Credentials;
 import com.cloudbees.plugins.credentials.CredentialsScope;
 import com.cloudbees.plugins.credentials.SecretBytes;
 import hudson.model.ParameterDefinition;
-import hudson.model.TextParameterDefinition;
+import hudson.model.PasswordParameterDefinition;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
@@ -61,7 +62,11 @@ public class EphemeralSecretFile extends EphemeralCredentialSpec {
 
     @Override
     public List<ParameterDefinition> inputParameters() {
-        return Collections.singletonList(new TextParameterDefinition(
+        // PasswordParameterDefinition rather than TextParameterDefinition so
+        // Jenkins encrypts the submitted value at rest (see the class
+        // javadoc) - the base64 alphabet already has to fit one line anyway,
+        // since Base64.getDecoder() rejects embedded whitespace.
+        return Collections.singletonList(new PasswordParameterDefinition(
                 "contentBase64", "", "Base64-encoded content for the secret file credential '" + getId() + "'"));
     }
 
@@ -69,7 +74,14 @@ public class EphemeralSecretFile extends EphemeralCredentialSpec {
     public Credentials materialize(Map<String, Object> answers) {
         byte[] content = Base64.getDecoder()
                 .decode(String.valueOf(answers.get("contentBase64")).trim());
-        return new FileCredentialsImpl(
-                CredentialsScope.GLOBAL, getId(), getDescription(), fileName, SecretBytes.fromBytes(content));
+        try {
+            return new FileCredentialsImpl(
+                    CredentialsScope.GLOBAL, getId(), getDescription(), fileName, SecretBytes.fromBytes(content));
+        } finally {
+            // SecretBytes.fromBytes encrypts into its own copy and doesn't
+            // retain this array - safe to scrub our copy immediately rather
+            // than waiting on GC (see EphemeralCredentialSpec javadoc).
+            Arrays.fill(content, (byte) 0);
+        }
     }
 }

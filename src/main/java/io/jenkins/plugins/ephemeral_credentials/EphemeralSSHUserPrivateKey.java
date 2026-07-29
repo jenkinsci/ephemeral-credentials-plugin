@@ -29,11 +29,12 @@ import com.cloudbees.plugins.credentials.CredentialsScope;
 import hudson.model.ParameterDefinition;
 import hudson.model.PasswordParameterDefinition;
 import hudson.model.StringParameterDefinition;
-import hudson.model.TextParameterDefinition;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * <p>SSH Username with private key. Unlike the other credential types, this one
@@ -54,6 +55,13 @@ import java.util.Objects;
 public class EphemeralSSHUserPrivateKey extends EphemeralCredentialSpec {
 
     private static final long serialVersionUID = 1L;
+
+    /**
+     * Matches a PEM block regardless of whether its base64 body still has
+     * line breaks or not - see {@link #reconstructPem(String)}.
+     */
+    private static final Pattern PEM_BLOCK =
+            Pattern.compile("(-----BEGIN .+?-----)(.*)(-----END .+?-----)", Pattern.DOTALL);
 
     public EphemeralSSHUserPrivateKey(String id, String description) {
         super(id, description);
@@ -78,7 +86,11 @@ public class EphemeralSSHUserPrivateKey extends EphemeralCredentialSpec {
     public List<ParameterDefinition> inputParameters() {
         return Arrays.asList(
                 new StringParameterDefinition("username", "", "SSH username for credential '" + getId() + "'"),
-                new TextParameterDefinition("privateKey", "", "Private key (PEM) for credential '" + getId() + "'"),
+                new PasswordParameterDefinition(
+                        "privateKey",
+                        "",
+                        "Private key (PEM) for credential '" + getId() + "' - paste as-is, including the "
+                                + "BEGIN/END markers; line breaks are reconstructed automatically"),
                 new PasswordParameterDefinition(
                         "passphrase",
                         "",
@@ -88,7 +100,7 @@ public class EphemeralSSHUserPrivateKey extends EphemeralCredentialSpec {
     @Override
     public Credentials materialize(Map<String, Object> answers) {
         String username = String.valueOf(answers.get("username"));
-        String privateKey = String.valueOf(answers.get("privateKey"));
+        String privateKey = reconstructPem(String.valueOf(answers.get("privateKey")));
         String passphrase = String.valueOf(answers.getOrDefault("passphrase", ""));
         BasicSSHUserPrivateKey.DirectEntryPrivateKeySource source =
                 new BasicSSHUserPrivateKey.DirectEntryPrivateKeySource(privateKey);
@@ -99,5 +111,27 @@ public class EphemeralSSHUserPrivateKey extends EphemeralCredentialSpec {
                 source,
                 passphrase.isEmpty() ? null : passphrase,
                 getDescription());
+    }
+
+    /**
+     * Collected via {@link PasswordParameterDefinition} rather than a plain
+     * text/textarea field, so that Jenkins encrypts the submitted value at
+     * rest (see the class javadoc) - but a single-line HTML password field
+     * strips embedded line breaks per the HTML value-sanitization algorithm,
+     * so a pasted multi-line PEM key arrives with its BEGIN/END markers and
+     * base64 body all run together. Reconstructs a syntactically valid PEM
+     * block from that: a PEM's base64 body needs no particular line width -
+     * confirmed empirically (ssh-keygen/openssl parse a single-unwrapped-line
+     * body identically to the traditional 64/70-column-wrapped form) - so
+     * this just needs real newlines immediately around the BEGIN/END marker
+     * lines, not any specific wrapping of the body itself.
+     */
+    private static String reconstructPem(String submitted) {
+        Matcher m = PEM_BLOCK.matcher(submitted.trim());
+        if (!m.matches()) {
+            throw new IllegalArgumentException(
+                    "Private key does not look like a PEM block (missing '-----BEGIN ...-----'/'-----END ...-----' markers)");
+        }
+        return m.group(1) + "\n" + m.group(2).replaceAll("\\s+", "") + "\n" + m.group(3) + "\n";
     }
 }

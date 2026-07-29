@@ -26,9 +26,12 @@ a Jenkins JVM saves state (configuration, CPS machinery).
 
 In-flight data passing through the `input()` step may get serialized by its
 action class, so special care must be paid to which input field type one
-would request there: some backing classes involve encoding a `Secret` or
-`SecretBytes` with a random key unique to each JVM process instance for
-storage in memory right away.
+would request there: some backing classes involve encoding a `Secret` with
+the Jenkins instance key, or `SecretBytes` with a random key unique to each
+JVM process instance, for storage in memory right away.
+
+For more details, please see the
+"<<what-gets-saved-where,What can get saved, when and where>>" chapter below.
 =========
 * `withEphemeralCredentials(...) { ... }` -- a global pipeline step (no
   `@Library` import needed) that, for each declared credential ID missing
@@ -292,6 +295,27 @@ keystore's raw bytes, base64-encoded) and decode it entirely in memory via
 `SecretBytes.fromBytes(...)`. A pragmatic simplification, not a
 faithful reproduction of the web UI's upload widget.
 
+[WARNING]
+=========
+**Every field that carries actual secret material -- `contentBase64`,
+`keystoreBase64`, `privateKey`, `password`, `passphrase`, `secret`,
+`username`+`password` -- is collected via `PasswordParameterDefinition`,
+never `TextParameterDefinition`/`StringParameterDefinition`.** This wasn't
+always true: initial plugin code iterations used `TextParameterDefinition`
+(multi-line, unmasked) for `contentBase64`, `keystoreBase64` and `privateKey`,
+and switching them was a deliberate fix, not a style choice -- see
+"<<what-gets-saved-where,What can get saved, when and where>>" below for
+why the parameter type is a real security decision, not just a UI detail.
+
+For `contentBase64`/`keystoreBase64` the switch was free: `Base64.getDecoder()`
+already rejects embedded whitespace, so a wrapped/multi-line paste never
+actually worked anyway, and both these fields were effectively
+single-line-only already.
+
+The `privateKey` (a genuine multi-line PEM block) took more care -- see
+`EphemeralSSHUserPrivateKey` discussion below.
+=========
+
 **The `ephemeralSSHUserPrivateKey` has a soft dependency on the "SSH
 Credentials" plugin** (https://plugins.jenkins.io/ssh-credentials/) --
 unlike the other four types, which only need plugins this one already
@@ -304,6 +328,40 @@ enough to force resolution) so a missing plugin fails immediately, with a
 clear message, at the point the pipeline author declares the spec -- not
 deep inside `materialize()` after a human has already answered an `input`
 prompt for nothing.
+
+**The `privateKey` is collected via `PasswordParameterDefinition` and
+reconstructed server-side, not pasted as multi-line text.** A private key
+is exactly the kind of secret a naive implementation would put in a
+`TextParameterDefinition` (it's genuinely multi-line PEM), but doing so
+means the raw key text is written to the build's own `workflow/*.xml`
+in cleartext every time (see the analysis section below) -- so instead:
+
+. The field is a `PasswordParameterDefinition`. Per the HTML Standard's
+  value-sanitization algorithm, a single-line `<input>` (which is what
+  `password`-type renders as) has any `\r`/`\n` characters stripped from
+  its value -- by the browser, unconditionally, whether the text was typed
+  or pasted. A multi-line PEM key pasted into this field arrives at
+  `materialize()` with its `-----BEGIN ...-----`/base64 body/
+  `-----END ...-----` all run together with no line breaks at all.
+. `EphemeralSSHUserPrivateKey.reconstructPem(...)` matches the flattened
+  string against `(-----BEGIN .+?-----)(.*)(-----END .+?-----)` and
+  reassembles it with real newlines only immediately around the BEGIN/END
+  marker lines -- the base64 body itself is written back as one
+  unbroken line, no re-wrapping at any particular column width needed.
+. This is not a guess: verified empirically against `ssh-keygen -y`,
+  `openssl pkey`/`genpkey`, and `ssh-add` (loading the reconstructed key
+  into a real `ssh-agent` and using it to `ssh-keygen -Y sign` a test
+  payload) during this project's own security review (2026-07). All three
+  tools parsed/used a reconstructed, single-unbroken-line-body key
+  identically to the original traditionally-wrapped one -- for both the
+  newer `OPENSSH PRIVATE KEY` format and the older PKCS#8 `PRIVATE KEY`
+  PEM format. PEM's traditional 64/70-column wrapping is a legacy
+  generator convention, not something parsers require.
+
+The same technique generalizes to any other multi-line secret format with
+a recognizable fixed structure (a header/footer, or any other unambiguous
+anchor) -- worth knowing if you're writing a custom
+`EphemeralCredentialSpec` for something similarly shaped.
 
 Adding another credential type (e.g. for GitLab or GitHub API tokens,
 other SSH and certificate types) means one more `EphemeralCredentialSpec`
@@ -344,6 +402,191 @@ So a plugin release is only strictly required for the `GlobalVariable`
 registration step -- anything that's pure data (every implementation of
 an `EphemeralCredentialSpec` so far) can live in a JSL instead, with zero
 coordination against this plugin's release cycle.
+
+[[what-gets-saved-where]]
+=== What can get saved, when and where (read this before writing a custom `EphemeralCredentialSpec`)
+
+This plugin's own design goal is that nothing it handles is ever persisted
+to disk. That guarantee is easy to state and easy to accidentally break
+when adding a *new* credential type, because most of the actual risk lives
+outside this plugin's own code -- in how Jenkins core and
+`pipeline-input-step` treat the `input` step's answers, and in how CPS
+persists a paused pipeline's state. Both are documented in detail below,
+based on decompiling the actual `pipeline-input-step`/`jenkins-core`
+sources during this project's own security review (2026-07), not
+assumptions about how they "probably" work.
+
+==== 1. The `input` step parameter type controls whether the answer is encrypted on disk -- unconditionally, every time
+
+`InputStepExecution.proceed(...)` -- the method that runs the moment a
+human submits an `input` form -- always does this, regardless of what the
+pipeline does with the result afterwards:
+
+[source,java]
+----
+getNode().addAction(new InputSubmittedAction(approverId, params));
+----
+
+`InputSubmittedAction implements PersistentAction`: it is written to the
+build's own `workflow/*.xml` action records on disk as part of that same
+call, before your pipeline script ever sees the answer. There is no way
+for a `withEphemeralCredentials`-style caller to opt out of this -- it
+happens inside `pipeline-input-step` itself.
+
+Whether the value inside that persisted XML is encrypted or plaintext
+depends entirely on the `ParameterValue` type behind whichever
+`ParameterDefinition` you asked for it with:
+
+[cols="1,1,2"]
+|===
+|`ParameterDefinition` |`ParameterValue.getValue()` returns |Persisted as
+
+|`PasswordParameterDefinition`
+|`hudson.util.Secret`
+|**Encrypted** -- `Secret` has its own XStream converter that serializes
+it via the instance's confidential store, transparently, the same
+mechanism that protects a normal, permanently-configured credential's
+secret field.
+
+|`TextParameterDefinition` / `StringParameterDefinition`
+|plain `String`
+|**Cleartext, verbatim, forever** -- in every build's own XML on disk,
+for as long as that build record exists.
+|===
+
+**This is why every field carrying secret material in this plugin's own
+five credential types is a `PasswordParameterDefinition`, with no
+exception** -- including `contentBase64`/`keystoreBase64`/`privateKey`,
+which used `TextParameterDefinition` in an earlier version of this plugin
+and were fixed for exactly this reason (see "Credential type factories"
+above).
+
+**If you write a custom `EphemeralCredentialSpec`, this is the
+single most important rule: never collect secret material through
+anything but `PasswordParameterDefinition`.** A field that merely
+identifies something you do not require to be protected (such as a
+key identifier, in many cases a username or a filename) is fine as a
+`StringParameterDefinition` -- only fields carrying the actual secret
+values need this.
+
+A `PasswordParameterDefinition` renders as a single-line HTML `<input>`;
+the HTML Standard's value-sanitization algorithm for single-line text
+controls strips any `\r`/`\n` characters from the submitted value,
+browser-side, unconditionally. If your secret is naturally multi-line
+(a PEM key, a multi-line config block, ...), you cannot just swap the
+parameter type and expect the line breaks to survive -- see
+`EphemeralSSHUserPrivateKey` above for a worked, empirically-verified
+example of collecting a flattened value and reconstructing it server-side
+around a recognizable fixed structure. The same idea generalizes to any
+format with an unambiguous anchor to reconstruct around.
+
+Also avoid `FileParameterDefinition` entirely: beside writing the
+uploaded file to the controller's disk as part of its own normal handling
+(the reason `EphemeralSecretFile`/`EphemeralCertificate` use pasted
+base64 text instead), `pipeline-input-step` has disabled it by default since
+link:https://www.jenkins.io/security/advisory/2022-06-22/#SECURITY-2705[`SECURITY-2705`]
+and may remove it outright in a future release.
+
+==== 2. CPS's own program-state persistence (`program.dat`) is a second, independent path -- mind what's CPS-reachable
+
+Separately from (1), *any* value held in a field or a named local
+variable of CPS-transformed Groovy (a `.groovy` file loaded through
+the classloader of a `CpsScript` instance -- such as this plugin's own
+`WithEphemeralCredentials.groovy`, a shared-library `vars`/`src` script,
+or the Jenkinsfile itself) is walked by CPS's continuation-serialization
+machinery every time the pipeline pauses on a step, and can end up written
+to the build's `program.dat` on disk as part of that checkpoint.
+
+Known `EphemeralCredentialSpec` implementations are typically safe here,
+but *only* because this plugin's own five ship as plain, precompiled
+Java -- never CPS-transformed, so none of their internals are ever
+CPS-continuation-reachable in the first place. That is **not** a property
+every `EphemeralCredentialSpec` has intrinsically: for example, one defined
+as a JSL `src/` class (per "Extending with more types" above) is itself
+ordinary CPS-transformed Groovy, exactly like a Jenkinsfile or a `vars/`
+script. Notably, see below about experiments with `@NonCPS`.
+
+The `WithEphemeralCredentials.groovy` script itself only takes one, narrower
+precaution given that: it never assigns `input` step's return value to a named
+local variable -- it flows directly from `script.input(...)` into
+`materialize(...)`/`put(...)` as part of one statement, rather than
+sitting in a `def raw = ...` which would remain part of the enclosing
+method's CPS continuation for the rest of that method's execution (not
+just for as long as it's lexically "in scope" the way a plain JVM stack
+frame would). Nothing here forces a mid-computation checkpoint in the
+first place -- CPS's persistence to `program.dat` is tied to step
+invocations, not plain statement execution, and no further step call
+happens between `input` returning and the credential being cached.
+
+**A stronger-looking option was tried and does not work here -- worth
+knowing before you reach for it yourself:** wrapping the
+"materialize-and-cache" logic in a `@NonCPS`
+(`com.cloudbees.groovy.cps.NonCPS`) method looks like it should give an
+even harder guarantee (a `@NonCPS` method has no CPS continuation at all
+for the interpreter to ever walk). It does, right up until that method
+needs to call a custom `EphemeralCredentialSpec` implementation class
+instance's `materialize()` method -- if that spec is a JSL `src/` class,
+its `materialize()` code **is** CPS-transformed, and a `@NonCPS` method
+cannot call into CPS-transformed code at all.
+
+* Confirmed empirically against a real embedded Jenkins running
+  `WithEphemeralCredentialsCustomLibraryTest`: every such call failed
+  with `CpsCallableInvocation` logging the infamous "expected to call X
+  but wound up catching Y" mismatch error (see the
+  https://jenkins.io/redirect/pipeline-cps-method-mismatches/ page), which
+  breaks the entire "extend via JSL, no plugin release needed" story this
+  plugin advertises.
+
+If you're writing your own glue code around a custom spec and are tempted
+to reach for `@NonCPS` for extra assurance, this is exactly the trap to
+check for first -- it is only safe if you can guarantee that every
+`EphemeralCredentialSpec` your glue might ever call is plain,
+non-CPS-transformed Java, which a plugin generally can't assume about
+specs it doesn't own.
+
+==== 3. The materialized credential lives in memory for the whole build, not just the moment it's collected
+
+The `EphemeralCredentialsProvider` class' cache is *what makes*
+`withEphemeralCredentials` useful for pre-warming (see "Pre-warming"
+above) -- but it also means the credential's plaintext (recoverable on
+demand, e.g. via `Secret.getPlainText()`, since that's exactly what lets
+`withCredentials` inject it later) stays live and heap-reachable for the
+build's entire remaining duration, not just for one `withCredentials`
+block's usual, much shorter window. A JVM heap dump taken any time in
+that window would expose it. This isn't unique to a custom credential
+type -- it's inherent to this plugin's whole caching design, and to how
+Jenkins credentials work in general whenever they're actively bound
+(nothing in the JVM/Java security model lets an ordinary application
+defend live, in-use plaintext against a memory dump of the very process
+that legitimately holds the decryption key) -- but it does mean the
+exposure *window* is larger than usual. Worth weighing for anything
+unusually sensitive, regardless of which credential type is involved.
+
+* You might want a different step implementation that asks for the
+  credential if missing, and discards from the credential store it
+  after calling the passed `Closure`. This plugin does not currently
+  provide such code, but it should be a trivial change from what it does.
+
+One thing a custom spec *can* do, cheaply: if `materialize()` decodes its
+own `byte[]` (base64 content, a keystore, ...) before wrapping it in
+`SecretBytes` or similar, overwrite that array
+(`Arrays.fill(bytes, (byte) 0)`) immediately after use, in a `finally`
+block, rather than waiting on Java GC -- see sources of `EphemeralSecretFile`
+and `EphemeralCertificate` for the code pattern. Note that java `String`
+objects can't be scrubbed this way (they're immutable, and Java gives no
+reliable way to zero their backing memory), which is one more reason to
+prefer decoding into a `byte[]` object that you control over building up
+a secret based on `String` instances, where the format allows it.
+
+==== 4. Never log or echo a collected value
+
+Obvious, but worth stating for extension authors as an explicit rule
+rather than something to infer: nothing in this plugin ever calls `echo`
+step or logs an `input` answer or a materialized secret, in the console
+log or anywhere else, including in exception messages. A custom spec's own
+`materialize()`/glue code should hold to the same rule -- in particular,
+don't include the secret value itself in a thrown exception's message,
+since that message can end up in the build log or server log.
 
 == Tests
 

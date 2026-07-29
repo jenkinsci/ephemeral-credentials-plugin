@@ -29,7 +29,6 @@ import com.cloudbees.plugins.credentials.SecretBytes;
 import com.cloudbees.plugins.credentials.impl.CertificateCredentialsImpl;
 import hudson.model.ParameterDefinition;
 import hudson.model.PasswordParameterDefinition;
-import hudson.model.TextParameterDefinition;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
@@ -58,8 +57,12 @@ public class EphemeralCertificate extends EphemeralCredentialSpec {
 
     @Override
     public List<ParameterDefinition> inputParameters() {
+        // PasswordParameterDefinition rather than TextParameterDefinition so
+        // Jenkins encrypts the submitted value at rest (see the class
+        // javadoc) - the base64 alphabet already has to fit one line anyway,
+        // since Base64.getDecoder() rejects embedded whitespace.
         return Arrays.asList(
-                new TextParameterDefinition(
+                new PasswordParameterDefinition(
                         "keystoreBase64", "", "Base64-encoded PKCS#12 keystore for credential '" + getId() + "'"),
                 new PasswordParameterDefinition("password", "", "Keystore password for credential '" + getId() + "'"));
     }
@@ -68,9 +71,16 @@ public class EphemeralCertificate extends EphemeralCredentialSpec {
     public Credentials materialize(Map<String, Object> answers) {
         byte[] keystoreBytes = Base64.getDecoder()
                 .decode(String.valueOf(answers.get("keystoreBase64")).trim());
-        String password = String.valueOf(answers.getOrDefault("password", ""));
-        CertificateCredentialsImpl.UploadedKeyStoreSource source =
-                new CertificateCredentialsImpl.UploadedKeyStoreSource(SecretBytes.fromBytes(keystoreBytes));
-        return new CertificateCredentialsImpl(CredentialsScope.GLOBAL, getId(), getDescription(), password, source);
+        try {
+            String password = String.valueOf(answers.getOrDefault("password", ""));
+            CertificateCredentialsImpl.UploadedKeyStoreSource source =
+                    new CertificateCredentialsImpl.UploadedKeyStoreSource(SecretBytes.fromBytes(keystoreBytes));
+            return new CertificateCredentialsImpl(CredentialsScope.GLOBAL, getId(), getDescription(), password, source);
+        } finally {
+            // SecretBytes.fromBytes encrypts into its own copy and doesn't
+            // retain this array - safe to scrub our copy immediately rather
+            // than waiting on GC (see EphemeralCredentialSpec javadoc).
+            Arrays.fill(keystoreBytes, (byte) 0);
+        }
     }
 }

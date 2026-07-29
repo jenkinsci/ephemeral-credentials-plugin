@@ -41,6 +41,27 @@ import java.util.Map;
  * <p>Plain data/logic, never itself invokes a pipeline step, so unlike
  * {@code WithEphemeralCredentials} it needs no special CPS treatment
  * and is {@link Serializable}.</p>
+ *
+ * <h2>Heap exposure - what this plugin does and doesn't protect against</h2>
+ * <p>{@link #materialize} necessarily handles secret plaintext (or decoded
+ * secret bytes) as an ordinary Java {@code String}/{@code byte[]} for the
+ * short time it takes to build the {@link Credentials} object - {@code
+ * String}s are immutable and can't be scrubbed, so subclasses that decode
+ * their own {@code byte[]} copy (e.g. base64 content) should overwrite it
+ * (e.g. {@code Arrays.fill(bytes, (byte) 0)}) the moment it's no longer
+ * needed, rather than waiting on GC. This narrows one specific window, but
+ * doesn't change the bigger picture: once materialized, the {@code
+ * Credentials} object itself sits live in {@code EphemeralCredentialsProvider}'s
+ * in-memory cache for the rest of the build, and its own plaintext is
+ * necessarily recoverable on demand (e.g. via {@code Secret.getPlainText()})
+ * for as long as it's cached - that's what lets {@code withCredentials} bind
+ * it. A JVM heap dump taken during that window would expose it, the same as
+ * it would for any credential actively bound via {@code withCredentials}
+ * today; this plugin doesn't make that fundamentally worse, it just holds
+ * the secret live for the whole build instead of one {@code withCredentials}
+ * block, and nothing in the JVM/Java security model lets an ordinary plugin
+ * defend live, in-use plaintext against a memory dump of the process that
+ * legitimately holds it.</p>
  */
 public abstract class EphemeralCredentialSpec implements Serializable {
 
