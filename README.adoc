@@ -507,14 +507,16 @@ ordinary CPS-transformed Groovy, exactly like a Jenkinsfile or a `vars/`
 script. Notably, see below about experiments with `@NonCPS`.
 
 The `WithEphemeralCredentials.groovy` script itself only takes one, narrower
-precaution given that: it never assigns `input` step's return value to a named
-local variable -- it flows directly from `script.input(...)` into
-`materialize(...)`/`put(...)` as part of one statement, rather than
-sitting in a `def raw = ...` which would remain part of the enclosing
-method's CPS continuation for the rest of that method's execution (not
-just for as long as it's lexically "in scope" the way a plain JVM stack
-frame would). Nothing here forces a mid-computation checkpoint in the
-first place -- CPS's persistence to `program.dat` is tied to step
+precaution given that: it never assigns `input` step's return value to a
+named local variable which survives until a next potential CPS "pause and
+save" checkpoint (such as a new step) -- the value flows directly from
+`script.input(...)` into `materialize(...)`/`put(...)` as part of one
+statement, rather than sitting in a `def raw = ...` which would remain
+part of the enclosing method's CPS continuation for the rest of that
+method's execution (not necessarily just for as long as it's lexically
+"in scope" the way a plain JVM stack frame would).
+Nothing here forces a mid-computation checkpoint in the first
+place -- CPS's persistence to `program.dat` is tied to step
 invocations, not plain statement execution, and no further step call
 happens between `input` returning and the credential being cached.
 
