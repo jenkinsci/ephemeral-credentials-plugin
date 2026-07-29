@@ -1,4 +1,4 @@
-= Ephemeral Credentials Provider
+= Ephemeral Credentials Plugin
 
 A Jenkins plugin providing:
 

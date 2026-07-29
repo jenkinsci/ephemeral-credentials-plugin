@@ -14,9 +14,9 @@
   <version>${revision}.${changelist}</version>
   <packaging>hpi</packaging>
 
-  <name>Ephemeral Credentials Provider</name>
-  <description>Run-scoped, in-memory CredentialsProvider: resolves credentials only for the
-        Pipeline build currently executing, and only what that build itself cached.
+  <name>Ephemeral Credentials Plugin</name>
+  <description>Run-scoped, in-memory Jenkins CredentialsProvider: resolves credentials only
+        for the Pipeline build currently executing, and only what that build itself had cached.
         Nothing it holds is ever written to disk.</description>
   <url>https://github.com/${gitHubRepo}</url>
   <inceptionYear>2026</inceptionYear>
