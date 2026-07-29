@@ -102,6 +102,29 @@ import org.springframework.security.core.Authentication;
  * a signal would be useful, confirming the {@code itemGroup}-scoped
  * fallback below is genuinely necessary, not just a convenient shortcut.</p>
  *
+ * <p><b>{@code hudson.model.Executor.currentExecutor()} was checked too -
+ * also {@code null} in this exact call path, both by reading {@link
+ * org.jenkinsci.plugins.workflow.steps.SynchronousNonBlockingStepExecution}'s
+ * own source and by measuring it directly.</b> Its {@code start()} submits
+ * the actual work to a {@code static}, JVM-wide {@code
+ * Executors.newCachedThreadPool(...)} shared by every subclass across the
+ * whole Jenkins instance (explaining the identical thread name/ID measured
+ * above) - a plain generic worker thread with no involvement from Jenkins'
+ * own {@code Executor}/build-slot machinery at all, so {@code
+ * Executor.currentExecutor()}'s {@code ThreadLocal} (populated only from
+ * inside {@code Executor}'s own {@code run()}) was never set on it. Nor
+ * does that class expose any other thread-to-context registry: the only
+ * place the {@code Run} actually lives on this path is as an ordinary
+ * method parameter threaded down through {@code MultiBinding.getCredentials
+ * (Run build)} - which is already exactly what surfaces as this method's own
+ * {@code itemGroup}/{@code authentication} parameters. Walking the raw
+ * {@code Thread.getStackTrace()} at this point wouldn't recover anything
+ * more either: it yields class/method/line information only, never the
+ * live argument values (like that same {@code build} parameter) sitting in
+ * frames above the current one - that requires a debugger-level API
+ * (JVMTI/JDI) or bytecode instrumentation, not something a plugin should
+ * reach for even if it were available.</p>
+ *
  * <h2>The unidentifiable-run fallback, and why it's scoped to {@code itemGroup}</h2>
  * <p>When the run can't be identified, this falls back to considering other
  * runs' caches too and lets the caller's own by-ID filtering (e.g. {@code
