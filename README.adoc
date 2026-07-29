@@ -33,7 +33,7 @@ storage in memory right away.
 * `withEphemeralCredentials(...) { ... }` -- a global pipeline step (no
   `@Library` import needed) that, for each declared credential ID missing
   from every other store, pauses on `input` to collect it interactively,
-  caches it in the provider above, and then runs its body - so an
+  caches it in the provider above, and then runs its body -- so an
   *unmodified* nested `withCredentials`/`checkout`/etc. inside that body just
   finds the value.
 
@@ -41,7 +41,7 @@ storage in memory right away.
 .Technical note
 ======
 This exists as a real plugin (not a JSL shared-library class), because
-shared-library `src/` classes are recompiled per build - each build gets its
+shared-library `src/` classes are recompiled per build -- each build gets its
 own `Class` object and its own copy of any `static` state, so there is no way
 for such a class to act as a genuine cross-build singleton. An `@Extension`
 in a real plugin, by contrast, is loaded once at Jenkins startup and is
@@ -292,16 +292,16 @@ keystore's raw bytes, base64-encoded) and decode it entirely in memory via
 `SecretBytes.fromBytes(...)`. A pragmatic simplification, not a
 faithful reproduction of the web UI's upload widget.
 
-**`ephemeralSSHUserPrivateKey` has a soft dependency on the "SSH
-Credentials" plugin** (https://plugins.jenkins.io/ssh-credentials/) -
+**The `ephemeralSSHUserPrivateKey` has a soft dependency on the "SSH
+Credentials" plugin** (https://plugins.jenkins.io/ssh-credentials/) --
 unlike the other four types, which only need plugins this one already
 requires unconditionally. It's declared `<optional>true</optional>` in
 `pom.xml`, so an installation that never uses this specific credential
-type doesn't need SSH Credentials installed at all - the manifest records
+type doesn't need SSH Credentials installed at all -- the manifest records
 it as `resolution:=optional`. Constructor of `EphemeralSSHUserPrivateKey`
 deliberately touches `BasicSSHUserPrivateKey.class` (a class literal is
 enough to force resolution) so a missing plugin fails immediately, with a
-clear message, at the point the pipeline author declares the spec - not
+clear message, at the point the pipeline author declares the spec -- not
 deep inside `materialize()` after a human has already answered an `input`
 prompt for nothing.
 
@@ -327,7 +327,7 @@ Three places a new type can live:
   factory/DSL-registration half, since `GlobalVariable` is a genuine
   `ExtensionPoint` requiring `@Extension` discovery at Jenkins startup,
   which only a real installed plugin gets.
-* **JSL - no new plugin at all.** The spec subclass can be an ordinary JSL
+* **JSL -- no new plugin at all.** The spec subclass can be an ordinary JSL
   `src/` class extending this plugin's `public abstract class
   EphemeralCredentialSpec` (its constructor is `protected`, so any
   subclass anywhere can call `super(id, description)`). Many JSL's already
@@ -382,40 +382,40 @@ an already-declared dependency.
 
 `WithEphemeralCredentialsCustomLibraryTest` illustrates and confirms that a
 *completely custom* credential type can be added without touching this
-plugin at all - by defining an `EphemeralCredentialSpec` subclass and its
+plugin at all -- by defining an `EphemeralCredentialSpec` subclass and its
 factory function in an ordinary (trusted, global) shared library instead,
 per the "Extending with more types" section above. The library content
 lives as genuine `.groovy` resource files under
 `src/test/resources/io/jenkins/plugins/ephemeral_credentials/{vars,src}/`
 (not embedded Java string literals), copied into a throwaway local git repo
 (`GitSampleRepoRule`) and loaded via `GlobalLibraries`/`SCMSourceRetriever`/
-`GitSCMSource` - the same mechanism a real Jenkins controller uses for a
+`GitSCMSource` -- the same mechanism a real Jenkins controller uses for a
 globally-configured library, and the exact pattern the shared-library
 plugin's own test suite (`GlobalLibrariesTest`) uses to test this feature.
 The example library defines `vars/myCorpApiToken.groovy` (an
 independently-named factory, parallel to this plugin's own
 `ephemeralSecretText`) and `src/com/example/jsl/MyCorpApiTokenSpec.groovy`
-(an independently-named spec subclass reusing `StringCredentialsImpl` -
-the same type `EphemeralSecretText` already wraps - purely to prove the
+(an independently-named spec subclass reusing `StringCredentialsImpl` -- the
+same type `EphemeralSecretText` already wraps -- purely to prove the
 extension mechanism, not to add a genuinely new credential type).
 
 This test is deliberately classic JUnit 4 (`@Rule`, `org.junit.Test`)
 rather than this project's usual JUnit 5 `@WithJenkins`, since
-`GitSampleRepoRule` - the standard way to test SCM-loaded shared libraries -
-is itself a classic JUnit 4 `@Rule`; `junit-vintage-engine` lets our
-JUnit-Platform-based surefire run it alongside the rest. Two things worth
+`GitSampleRepoRule` -- the standard way to test SCM-loaded shared
+libraries -- is itself a classic JUnit 4 `@Rule`; `junit-vintage-engine` lets
+our JUnit-Platform-based surefire run it alongside the rest. Two things worth
 knowing if this test needs touching:
 
 * **`JenkinsRule.timeout` needed raising to 600s.** This test's extra
   plugin set (`git`, `scm-api`, `pipeline-groovy-lib`, and their own
   transitive dependencies) makes plugin discovery alone slower than
-  `JenkinsRule`'s 180-second default in this environment - confirmed by a
+  `JenkinsRule`'s 180-second default in this environment -- confirmed by a
   thread dump showing the boot still stuck in plugin discovery at the
   180-second mark, nowhere near the actual test logic yet.
 * **`git` needed a `ephemeral_credentials` version bump.** `git` 5.5.2 refused to
   load against the `ephemeral_credentials` version this project's BOM snapshot
   otherwise provides (`1371.vfee6b_095f0a_3`), demanding
-  `1378.v81ef4269d764` or higher - resolved with a `dependencyManagement`
+  `1378.v81ef4269d764` or higher -- resolved with a `dependencyManagement`
   override for just that one artifact (see the Build section) rather than
   moving the whole BOM, since `1378` is a version already known to compile
   clean against this project's code (it was the very first pin this
@@ -429,9 +429,9 @@ A non-blocking warning also surfaced during this work, worth watching:
 `parseClass(...)`, described above). The build still succeeds today, but
 the warning message describes an opt-in allowlist system
 (`GroovySourceFileAllowlist.DefaultAllowlist.ALLOWED_SOURCE_FILES`) that a
-future `workflow-cps` release could plausibly tighten from warn to enforce -
-worth re-checking if this plugin's `workflow-cps` dependency is ever
-bumped.
+future `workflow-cps` release could plausibly tighten from "warn" to
+"enforce" -- worth re-checking if this plugin's `workflow-cps` dependency
+is ever bumped.
 
 Run with `mvn test`.
 
@@ -451,10 +451,10 @@ Produces `target/ephemeral-credentials-provider.hpi`.
 `spotless:check` (both bound to the `verify` phase). SpotBugs comes from
 the parent POM unconditionally; Spotless is already fully configured
 there too (Palantir Java Format for `.java`, `sortPom` for `pom.xml`) but
-ships **off** by default behind `spotless.check.skip` - this project
+ships **off** by default behind `spotless.check.skip` -- this project
 overrides that property to `false` rather than declaring a second,
 separate `spotless-maven-plugin` block (which would just duplicate the
-inherited one, and risks configuring the wrong formatter - an earlier,
+inherited one, and risks configuring the wrong formatter -- an earlier,
 wrong attempt at this pinned `googleJavaFormat` instead of the
 `palantirJavaFormat` the parent actually uses, and would have run as a
 second, redundant execution). Fix formatting issues with `mvn
@@ -513,13 +513,14 @@ this constructor at all, so naming it would fail to compile today. `Exception`
 is always a legal catch clause regardless of what the currently-resolved
 dependency version declares, so this same code compiles unchanged against
 both the version we ship against now and a future one that does throw
-`FormException` - confirmed by temporarily bumping the BOM to its latest
+`FormException` -- confirmed by temporarily bumping the BOM to its latest
 snapshot and compiling against both, then reverting. The other four
-credential-type constructors compiled clean under that newer snapshot too -
-only picked up deprecation warnings (a superseded `PasswordParameterDefinition`
-constructor; `SecretBytes.fromBytes`/`UploadedKeyStoreSource(SecretBytes)`
+credential-type constructors compiled clean under that newer snapshot
+too -- only picked up deprecation warnings (a superseded
+`PasswordParameterDefinition` constructor;
+`SecretBytes.fromBytes`/`UploadedKeyStoreSource(SecretBytes)`
 in `EphemeralCertificate`/`EphemeralSecretFile`), not compile errors, so
-they're left alone for now - worth revisiting if this project's core
+they're left alone for now -- worth revisiting if this project's core
 baseline ever actually moves forward.
 
 The `lockable-resources` and `pipeline-input-step` plugins are declared as
@@ -539,7 +540,7 @@ worth re-checking if the `ephemeral_credentials` dependency version is ever bump
 
 `git` (needed only as a test dependency, for `WithEphemeralCredentialsCustomLibraryTest`)
 required bumping `ephemeral_credentials` past what this project's BOM snapshot
-otherwise provides - see the test's own notes above. Pinned via a
+otherwise provides -- see the test's own notes above. Pinned via a
 `dependencyManagement` override for just that one artifact rather than
 moving the whole BOM:
 
