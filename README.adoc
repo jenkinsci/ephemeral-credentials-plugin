@@ -6,6 +6,30 @@ A Jenkins plugin providing:
   credentials only for Pipeline builds that put something into it themselves.
   Nothing it holds is ever written to disk -- a plain in-memory map, cleared
   as soon as the owning build finishes or Jenkins restarts.
++
+[WARNING]
+=========
+Use of this plugin *does not* magically guarantee the safety of your secrets,
+just that they would not be present on your system throughout its lifetime
+and readable with sufficient access from the running JVM or stored
+configuration files (or backups thereof).
+
+The ephemeral credentials, if collected, are stored in instances of classes
+provided by other plugins and later used by standard Jenkins code paths,
+which may leave traces on the build systems. For example, SSH keys or
+certificates may be saved into temporary files for tools like `git` or
+`ssh-agent` to use them. Simple echoes of passwords and usernames may,
+however, get scrubbed from your build logs and replaced by asterisks
+(as implemented by respective plugins, see e.g. the `withCredentials()`
+step). The collection overall should not get serialized to disk when
+a Jenkins JVM saves state (configuration, CPS machinery).
+
+In-flight data passing through the `input()` step may get serialized by its
+action class, so special care must be paid to which input field type one
+would request there: some backing classes involve encoding a `Secret` or
+`SecretBytes` with a random key unique to each JVM process instance for
+storage in memory right away.
+=========
 * `withEphemeralCredentials(...) { ... }` -- a global pipeline step (no
   `@Library` import needed) that, for each declared credential ID missing
   from every other store, pauses on `input` to collect it interactively,
