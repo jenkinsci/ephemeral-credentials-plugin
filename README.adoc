@@ -719,82 +719,6 @@ wrong attempt at this pinned `googleJavaFormat` instead of the
 second, redundant execution). Fix formatting issues with `mvn
 spotless:apply`.
 
-Dependency versions in `pom.xml` target this project's current
-`jenkins.baseline` property (`2.541.3` at last count -- check `pom.xml`
-directly for the live value, it has moved forward more than once).
-Most plugin versions come from importing the common Jenkins BOM as
-`io.jenkins.tools.bom:bom-${jenkins.baseline}.x` (a mutually-consistent
-set for this exact core line), with only a small, and eventually shrinking,
-number of manual version pins left for what that BOM genuinely doesn't cover.
-
-[NOTE]
-.Technical note
-======
-Resolving `workflow-cps`/`pipeline-input-step`/`lockable-resources` plugins'
-differing transitive wants piecemeal repeatedly hit the parent POM's
-`RequireUpperBoundDeps` enforcer rule during development; importing the
-common Jenkins BOM was much less fragile than pinning each conflict by hand
-as it surfaced.
-======
-
-**Re-audited 2026-07 against the current common Jenkins BOM to check what
-is genuinely still a manual version pin in this project versus what that
-BOM now covers -- run `mvn dependency:tree -Dincludes=<groupId>:<artifactId>`
-yourself to re-verify any of this later, since it does drift as the common
-BOM gets updated:**
-
-* `credentials`, `git` (both the plain and `tests`-classifier
-  dependencies), `pipeline-groovy-lib`, `scm-api` (`tests` classifier):
-  **no longer pinned either** -- all resolve straight from the BOM now
-  (confirmed via `mvn dependency:tree`: `credentials` at
-  `1506.v948b_b_b_7dec44`, `git` at `5.10.1`, `pipeline-groovy-lib` at
-  `798.v5cc688825312`). This project used to carry a
-  `dependencyManagement` override bumping `credentials` to
-  `1378.v81ef4269d764` specifically because an older `git` release
-  demanded it and the BOM snapshot of the time didn't provide it high
-  enough -- moot now that the BOM's own `credentials`/`git` versions
-  satisfy that on their own.
-* `lockable-resources` (`org.6wind.jenkins`): **no longer pinned, and
-  this is the more interesting discovery of this audit** -- it is *not*
-  absent from BOM coverage the way this project's own `pom.xml` comment
-  used to claim (fixed as part of this audit). It resolves to
-  `1539.v4db_b_fc1cc115` with zero explicit version
-  anywhere in this project's own `pom.xml`.
-  Tracing where that version actually comes from (by calling
-  `grep -rl <version> ~/.m2/repository/io/jenkins/tools/bom/`)
-  shows this project's `bom-${jenkins.baseline}.x` is a thin *forwarding*
-  BOM: it imports a newer `bom-2.555.x`, which imports a newer
-  `bom-2.568.x`, and so on -- a chain that (at the time of this audit)
-  eventually reaches `bom-weekly`, which is where `lockable-resources`
-  plugin version is actually declared. Whether that chain reaches all
-  the way to `bom-weekly` or stops at some other BOM in between can change
-  from release to release; the practical takeaway is just that a
-  per-baseline BOM import can cover far more than its own
-  `dependencyManagement` block appears to  at a glance, and
-  it is worth actually tracing any dependency that "unexpectedly resolves
-  with no explicit version" before assuming that it needs a manual pin.
-
-**`FormException` fixed defensively -- and the version that actually
-throws it is what's resolved today, not just a hypothetical future one.**
-`EphemeralUsernamePassword.materialize()` wraps the
-`UsernamePasswordCredentialsImpl` constructor call in
-`try { ... } catch (Exception e) { throw new IllegalStateException(...); }`
--- catching the broad `Exception` type rather than importing and naming
-`Descriptor.FormException` specifically. This was originally written
-defensively, when this project's `credentials` dependency (an older BOM
-snapshot at an older `jenkins.baseline`) did not yet declare
-`FormException` on that constructor, purely so the same code would keep
-compiling once a newer `credentials` release did. That newer release is
-what this project actually depends on today: `javap` against the
-currently-resolved jar
-(`org.jenkins-ci.plugins:credentials:1506.v948b_b_b_7dec44`, pulled in by
-the BOM, no override) confirms the constructor now declares
-`throws Descriptor.FormException` for real. `catch (Exception e)` handles
-this correctly either way -- Java only lets you catch a checked exception
-a `try` block could plausibly throw, and `Exception` is always legal
-regardless of what the resolved dependency version declares, so this one
-line of code never needed to change across that transition.
-
 `mvn clean compile -Dmaven.compiler.showDeprecation=true` also confirms
 the other credential-type constructors compile clean under today's
 resolved versions, but with real (not hypothetical) deprecation warnings
@@ -819,4 +743,9 @@ compatibility shim. The real extension point subclasses must override is
 `getCredentialsInItemGroup(Class, ItemGroup, org.springframework.security
 .core.Authentication, List<DomainRequirement>)`, which is what this plugin
 does. Confirmed by decompiling the resolved plugin jar during development;
-worth re-checking if the `ephemeral_credentials` dependency version is ever bumped.
+worth re-checking if the `ephemeral_credentials` dependency version is ever
+bumped.
+
+Generally, run `mvn dependency:tree -Dincludes=<groupId>:<artifactId>`
+yourself to re-verify any of this later, since it does drift as the common
+BOM gets updated.
