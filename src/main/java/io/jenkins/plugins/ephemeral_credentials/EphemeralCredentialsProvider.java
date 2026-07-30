@@ -87,23 +87,50 @@ import org.springframework.security.core.Authentication;
  * CredentialsProvider.findCredentialById}) pick the right entry - but
  * <b>only among runs whose job lives within the {@code itemGroup} this
  * method was actually asked about</b>, not literally every cached run
- * project-wide. This matters because Jenkins' extension API never passes
- * the specific calling {@code Run} this deep - only its containing {@code
- * itemGroup} (the job's own folder, or Jenkins root) and effective {@code
- * Authentication} - so there is no way to identify the exact run from this
- * method's parameters alone. Without the {@code itemGroup} scoping, an
- * unfiltered "every cached run" fallback would let a build in one folder
- * receive another, unrelated build's ephemeral value from a completely
- * different folder/team/permission scope, purely because both happened to
- * cache something under the same literal credential ID at the same time - a
- * genuine cross-tenant credential leak, since Jenkins folder-scoped
- * credentials exist specifically to enforce that boundary. Scoping the
- * fallback to {@code itemGroup} containment restores that boundary. A
- * narrower residual risk remains: two concurrent runs of the same or
- * sibling jobs <em>within the same folder scope</em>, caching different
- * values under the same literal ID, can still collide - weigh that against
- * how likely concurrent builds sharing an ID are for whatever pipeline uses
- * this.</p>
+ * project-wide. This matters: tracing {@code credentials-binding}'s actual
+ * call path (its {@code Run}-based {@code findCredentialById} overload,
+ * through {@code findCredentialByIdInItem(id, type, run.getParent(), ...)})
+ * confirms that {@code itemGroup} here is the calling job's own containing
+ * folder (or Jenkins root) - Jenkins' extension API simply never passes the
+ * specific calling {@code Run} this deep, so there is no way to identify
+ * the exact run from this method's parameters alone. Without the {@code
+ * itemGroup} scoping, an unfiltered "every cached run" fallback would let a
+ * build in one folder receive another, unrelated build's ephemeral value
+ * from a completely different folder/team/permission scope, purely because
+ * both happened to cache something under the same literal credential ID at
+ * the same time - a genuine cross-tenant credential leak, not a theoretical
+ * one, since Jenkins folder-scoped credentials exist specifically to
+ * enforce that boundary. Scoping the fallback to {@code itemGroup}
+ * containment restores that boundary. A narrower residual risk remains:
+ * two concurrent runs of the same or sibling jobs *within the same folder
+ * scope*, caching different values under the same literal ID, can still
+ * collide - weigh that against how likely concurrent builds sharing an ID
+ * are for whatever pipeline uses this.</p>
+ *
+ * <h2>Closing the gap properly: a proposed, run-aware {@code credentials-plugin} API</h2>
+ * <p>All of the above is a workaround for a genuine upstream gap: {@code
+ * CredentialsProvider.findCredentialById(id, type, Run, ...)} - the exact
+ * overload {@code credentials-binding}, {@code git} (for {@code checkout}),
+ * and {@code ssh-agent} (for {@code sshagent}) all confirmed to use - already
+ * has the {@code Run} in hand, but historically discarded it before ever
+ * reaching a provider's own overridable methods, retaining only the run's
+ * containing {@code Item}/{@code ItemGroup} and effective {@code
+ * Authentication}. This plugin's own investigation into that gap (thread
+ * naming, {@code Executor.currentExecutor()}, stack-frame introspection -
+ * see above) led to proposing an additive, backward-compatible fix upstream:
+ * new {@code Run}-accepting overloads of {@code getCredentialsInItemGroup}/
+ * {@code getCredentialByIdInItemGroup}/{@code getCredentialsInItem}/{@code
+ * getCredentialByIdInItem} (default implementation delegates to today's
+ * behavior, so providers that don't override them are unaffected), with the
+ * existing {@code Run}-based {@code findCredentialById} threading the real
+ * {@code Run} down to them instead of dropping it. Where that API is
+ * available, {@link #getCredentialsInItemGroup(Class, ItemGroup,
+ * Authentication, List, Run)} below uses the real {@code Run} directly -
+ * no {@code CpsThread} correlation, no {@code itemGroup}-scoped guessing,
+ * no residual same-folder collision risk. The 4-argument override above
+ * remains as the fallback for callers that don't (yet, or ever) supply a
+ * {@code Run} this way - e.g. a job-config credential dropdown, which
+ * genuinely has no run to give, and there is no suitable value to return.</p>
  */
 @Extension
 public class EphemeralCredentialsProvider extends CredentialsProvider {
@@ -164,6 +191,41 @@ public class EphemeralCredentialsProvider extends CredentialsProvider {
         }
         LOGGER.fine(() -> "getCredentialsInItemGroup: returning " + result.size() + " candidate(s) of type "
                 + type.getSimpleName());
+        return result;
+    }
+
+    /**
+     * The run-aware overload - see the class javadoc ("Closing the gap
+     * properly"). When {@code run} is supplied, it is used directly: exactly
+     * this run's own cache, nothing else, no correlation guesswork at all.
+     * When it isn't (a caller with no run to give, e.g. a job-config
+     * credential dropdown), this falls through to the 4-argument override
+     * above, preserving its {@code CpsThread}/{@code itemGroup}-scoped
+     * fallback behavior unchanged.
+     */
+    @NonNull
+    @Override
+    public <C extends Credentials> List<C> getCredentialsInItemGroup(
+            @NonNull Class<C> type,
+            @NonNull ItemGroup itemGroup,
+            @Nullable Authentication authentication,
+            @NonNull List<DomainRequirement> domainRequirements,
+            @CheckForNull Run<?, ?> run) {
+        if (run == null) {
+            return getCredentialsInItemGroup(type, itemGroup, authentication, domainRequirements);
+        }
+        Map<String, Credentials> forRun = byRun.get(run.getExternalizableId());
+        List<C> result = new ArrayList<>();
+        if (forRun != null) {
+            for (Credentials candidate : forRun.values()) {
+                if (type.isInstance(candidate)) {
+                    result.add(type.cast(candidate));
+                }
+            }
+        }
+        String runId = run.getExternalizableId();
+        LOGGER.fine(() -> "getCredentialsInItemGroup(run): run=" + runId + " identified directly, returning "
+                + result.size() + " candidate(s) of type " + type.getSimpleName());
         return result;
     }
 
