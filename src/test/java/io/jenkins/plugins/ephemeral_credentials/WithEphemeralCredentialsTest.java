@@ -29,9 +29,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.cloudbees.plugins.credentials.CredentialsScope;
 import com.cloudbees.plugins.credentials.SystemCredentialsProvider;
 import com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl;
+import hudson.model.queue.QueueTaskFuture;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -365,6 +367,85 @@ class WithEphemeralCredentialsTest {
         j.assertLogNotContains("putpass", run);
         j.assertLogNotContains("rawpass", run);
         j.assertLogNotContains("mappass", run);
+    }
+
+    @Test
+    @Timeout(180)
+    void concurrentRunsSharingACredentialIdDoNotCrossContaminate(JenkinsRule j) throws Exception {
+        // The whole point of EphemeralCredentialsProvider now using the real,
+        // run-aware credentials-plugin API (rather than any CpsThread/itemGroup
+        // guesswork - see the class javadoc on EphemeralCredentialsProvider) is
+        // that a build can never resolve to a *different* run's cached value,
+        // no matter how many other runs are caching something under the exact
+        // same literal credential ID at the exact same time. This test forces
+        // that exact situation: several concurrent builds all put() the SAME
+        // ID with a value unique to themselves, then all consume it via the
+        // standard withCredentials binding - not this plugin's own find()/
+        // has(), to prove real integration with the ordinary lookup path.
+        int jobCount = 5;
+        j.jenkins.setNumExecutors(jobCount);
+
+        List<WorkflowJob> jobs = new ArrayList<>();
+        for (int i = 0; i < jobCount; i++) {
+            WorkflowJob p = j.jenkins.createProject(WorkflowJob.class, "concurrent-" + i);
+            p.setDefinition(new CpsFlowDefinition(
+                    String.join(
+                            "\n",
+                            "pipeline {",
+                            "  agent any",
+                            "  stages {",
+                            "    stage('produce-and-consume') {",
+                            "      steps {",
+                            "        script {",
+                            // The unique marker goes in the *username*, not the
+                            // password: withCredentials masks bound password
+                            // values in the console log (by design), so a
+                            // literal password value could never be asserted on
+                            // via the log afterward.
+                            "          ephemeralCredentialsPut(spec: ephemeralUsernamePassword(id: 'SHARED_ID', description: 'shared'), values: [username: \"${env.JOB_NAME}#${env.BUILD_NUMBER}\", password: 'irrelevant'])",
+                            // Widens the window during which every concurrently
+                            // running build's entry coexists in the shared
+                            // in-memory store under the same literal ID, so the
+                            // withCredentials lookup below is genuinely exercised
+                            // against several runs' caches at once, not just
+                            // its own in a store that happens to be otherwise empty.
+                            "          sleep(time: 2, unit: 'SECONDS')",
+                            "        }",
+                            "        withCredentials([usernamePassword(credentialsId: 'SHARED_ID', usernameVariable: 'U', passwordVariable: 'P')]) {",
+                            "          echo \"GOT:${env.JOB_NAME}:${U}\"",
+                            "        }",
+                            "      }",
+                            "    }",
+                            "  }",
+                            "}"),
+                    true));
+            jobs.add(p);
+        }
+
+        // Fire all builds first, without waiting - only then start collecting
+        // results, so the builds actually race each other for executors and
+        // overlap in the shared store, instead of running one at a time.
+        List<QueueTaskFuture<WorkflowRun>> futures = new ArrayList<>();
+        for (WorkflowJob p : jobs) {
+            futures.add(p.scheduleBuild2(0));
+        }
+
+        List<WorkflowRun> runs = new ArrayList<>();
+        for (QueueTaskFuture<WorkflowRun> future : futures) {
+            runs.add(j.assertBuildStatusSuccess(future));
+        }
+
+        for (WorkflowRun run : runs) {
+            String mine = run.getParent().getFullName() + "#" + run.getNumber();
+            j.assertLogContains("GOT:" + run.getParent().getFullName() + ":" + mine, run);
+            for (WorkflowRun other : runs) {
+                if (other == run) {
+                    continue;
+                }
+                String neighborsValue = other.getParent().getFullName() + "#" + other.getNumber();
+                j.assertLogNotContains(neighborsValue, run);
+            }
+        }
     }
 
     /** Helper for tests: a structurally valid (if empty) PKCS#12 keystore, for
