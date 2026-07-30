@@ -31,11 +31,9 @@ import edu.umd.cs.findbugs.annotations.NonNull;
 import edu.umd.cs.findbugs.annotations.Nullable;
 import hudson.Extension;
 import hudson.ExtensionList;
-import hudson.model.Item;
 import hudson.model.ItemGroup;
 import hudson.model.Run;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -45,17 +43,18 @@ import org.jenkinsci.plugins.workflow.cps.CpsThread;
 import org.springframework.security.core.Authentication;
 
 /**
- * <p>A {@link CredentialsProvider} that only ever answers with ephemeral_credentials that
- * some currently executing Pipeline build itself put into it. Everything is
- * held in a plain in-memory map, keyed by {@link Run#getExternalizableId()};
- * nothing here is {@code Saveable} and nothing is ever written to disk.</p>
+ * <p>A {@link CredentialsProvider} that only ever answers with ephemeral
+ * credentials that some currently executing Pipeline build itself put into
+ * it. Everything is held in a plain in-memory map, keyed by {@link
+ * Run#getExternalizableId()}; nothing here is {@code Saveable} and nothing is
+ * ever written to disk.</p>
  *
  * <p>This class is loaded once, as an ordinary {@code @Extension}, at Jenkins
  * startup - unlike a shared-library {@code src/} class, which is recompiled
  * per build and therefore cannot hold state shared across builds. That is
  * the whole reason this exists as a real plugin instead of living in a JSL.</p>
  *
- * <p>{@link #getCredentialsInItemGroup} is invoked by Jenkins' generic ephemeral_credentials
+ * <p>{@link #getCredentialsInItemGroup} is invoked by Jenkins' generic credentials
  * lookup from many unrelated contexts (job-config dropdowns, other plugins
  * enumerating what's available, freestyle builds, etc.), not just from a
  * deliberate request for a specific ID. It therefore stays purely passive -
@@ -81,56 +80,35 @@ import org.springframework.security.core.Authentication;
  * for example, performs its own {@code findCredentialById} call from such a
  * thread, where {@link CpsThread#current()} is {@code null}.</p>
  *
- * <h2>The unidentifiable-run fallback, and why it's scoped to {@code itemGroup}</h2>
- * <p>When the run can't be identified, this falls back to considering other
- * runs' caches too and lets the caller's own by-ID filtering (e.g. {@code
- * CredentialsProvider.findCredentialById}) pick the right entry - but
- * <b>only among runs whose job lives within the {@code itemGroup} this
- * method was actually asked about</b>, not literally every cached run
- * project-wide. This matters: tracing {@code credentials-binding}'s actual
- * call path (its {@code Run}-based {@code findCredentialById} overload,
- * through {@code findCredentialByIdInItem(id, type, run.getParent(), ...)})
- * confirms that {@code itemGroup} here is the calling job's own containing
- * folder (or Jenkins root) - Jenkins' extension API simply never passes the
- * specific calling {@code Run} this deep, so there is no way to identify
- * the exact run from this method's parameters alone. Without the {@code
- * itemGroup} scoping, an unfiltered "every cached run" fallback would let a
- * build in one folder receive another, unrelated build's ephemeral value
- * from a completely different folder/team/permission scope, purely because
- * both happened to cache something under the same literal credential ID at
- * the same time - a genuine cross-tenant credential leak, not a theoretical
- * one, since Jenkins folder-scoped credentials exist specifically to
- * enforce that boundary. Scoping the fallback to {@code itemGroup}
- * containment restores that boundary. A narrower residual risk remains:
- * two concurrent runs of the same or sibling jobs *within the same folder
- * scope*, caching different values under the same literal ID, can still
- * collide - weigh that against how likely concurrent builds sharing an ID
- * are for whatever pipeline uses this.</p>
+ * <p>Unfortunately, this resolution by CPS threads rules out the use of
+ * this plugin for legacy (Freestyle) builds where we currently have no
+ * way of matching the currently running code path to a {@code Run} of
+ * a build. If a solution to that problem is found, code contributions
+ * are welcome.</p>
  *
- * <h2>Closing the gap properly: a proposed, run-aware {@code credentials-plugin} API</h2>
- * <p>All of the above is a workaround for a genuine upstream gap: {@code
- * CredentialsProvider.findCredentialById(id, type, Run, ...)} - the exact
- * overload {@code credentials-binding}, {@code git} (for {@code checkout}),
- * and {@code ssh-agent} (for {@code sshagent}) all confirmed to use - already
- * has the {@code Run} in hand, but historically discarded it before ever
- * reaching a provider's own overridable methods, retaining only the run's
- * containing {@code Item}/{@code ItemGroup} and effective {@code
- * Authentication}. This plugin's own investigation into that gap (thread
- * naming, {@code Executor.currentExecutor()}, stack-frame introspection -
- * see above) led to proposing an additive, backward-compatible fix upstream:
- * new {@code Run}-accepting overloads of {@code getCredentialsInItemGroup}/
- * {@code getCredentialByIdInItemGroup}/{@code getCredentialsInItem}/{@code
- * getCredentialByIdInItem} (default implementation delegates to today's
- * behavior, so providers that don't override them are unaffected), with the
- * existing {@code Run}-based {@code findCredentialById} threading the real
- * {@code Run} down to them instead of dropping it. Where that API is
- * available, {@link #getCredentialsInItemGroup(Class, ItemGroup,
- * Authentication, List, Run)} below uses the real {@code Run} directly -
- * no {@code CpsThread} correlation, no {@code itemGroup}-scoped guessing,
- * no residual same-folder collision risk. The 4-argument override above
- * remains as the fallback for callers that don't (yet, or ever) supply a
- * {@code Run} this way - e.g. a job-config credential dropdown, which
- * genuinely has no run to give, and there is no suitable value to return.</p>
+ * <h2>Run identification: known, or nothing - never guessed</h2>
+ * <p>Ephemeral credentials only ever mean something in the context of one
+ * specific {@link Run}; there is no sensible answer to "which run's cache
+ * applies here" other than the actual run asking the question. Every real
+ * consumer of a credential ID -- {@code CredentialsProvider.findCredentialById
+ * (id, type, Run, ...)} and everything built on it ({@code withCredentials},
+ * {@code checkout}, {@code sshagent}, this plugin's own {@code
+ * WithEphemeralCredentials}/{@code EphemeralCredentialsAccessor}) -- already
+ * has the {@link Run} in hand.</p>
+ *
+ * <p>A {@code credentials-plugin} API update proposed in
+ * <a href="https://github.com/jenkinsci/credentials-plugin/pull/1071">pull
+ * request #1071</a> allows passing that {@code Run} object all the way down
+ * to a provider implementation's own overridable methods instead of discarding
+ * it before it gets here, as the earlier releases did (see
+ * {@link #getCredentialsInItemGroup(Class, ItemGroup, Authentication, List,
+ * Run)} below). With that feature in place, this class simply uses the value
+ * directly -- no fallback correlation is attempted through any other channel.</p>
+ *
+ * <p>When a caller genuinely has no {@link Run} to give at all and calls the
+ * 4-argument overload below, e.g. a job-config credential dropdown - the
+ * only correct answer is an empty list: "no ephemeral credential applies
+ * here," never a guess.</p>
  */
 @Extension
 public class EphemeralCredentialsProvider extends CredentialsProvider {
@@ -148,6 +126,14 @@ public class EphemeralCredentialsProvider extends CredentialsProvider {
         return ExtensionList.lookupSingleton(EphemeralCredentialsProvider.class);
     }
 
+    /**
+     * Called only when the caller has no {@link Run} to give at all - see
+     * the 5-argument overload below, which is what every real Run-based
+     * lookup actually goes through. Ephemeral credentials are meaningless
+     * without knowing which run they belong to, so this always answers with
+     * an empty list rather than guessing at one - see the class javadoc for
+     * why an earlier revision's guesswork here was removed.
+     */
     @NonNull
     @Override
     public <C extends Credentials> List<C> getCredentialsInItemGroup(
@@ -155,53 +141,20 @@ public class EphemeralCredentialsProvider extends CredentialsProvider {
             @NonNull ItemGroup itemGroup,
             @Nullable Authentication authentication,
             @NonNull List<DomainRequirement> domainRequirements) {
-        Run<?, ?> run = CpsRuns.current();
-        Collection<Map<String, Credentials>> candidates;
-        if (run != null) {
-            Map<String, Credentials> forRun = byRun.get(run.getExternalizableId());
-            candidates = (forRun == null ? Collections.emptyList() : Collections.singletonList(forRun));
-            LOGGER.fine(() -> "getCredentialsInItemGroup: run identified as " + run.getExternalizableId() + ", "
-                    + (forRun == null ? "no ephemeral cache for it" : forRun.size() + " entries cached"));
-        } else {
-            // See the class javadoc: can't identify the run, so consider
-            // other runs' caches too, but only those whose job lives within
-            // the itemGroup we were actually asked about (e.g. a job Folder) -
-            // not literally every cached run server-wide - and let by-ID filtering
-            // downstream (e.g. CredentialsProvider.findCredentialById) pick
-            // the right entry among those.
-            List<Map<String, Credentials>> scoped = new ArrayList<>();
-            for (Map.Entry<String, Map<String, Credentials>> entry : byRun.entrySet()) {
-                Run<?, ?> candidateRun = Run.fromExternalizableId(entry.getKey());
-                if (candidateRun != null && isWithin(itemGroup, candidateRun)) {
-                    scoped.add(entry.getValue());
-                }
-            }
-            candidates = scoped;
-            LOGGER.fine(() -> "getCredentialsInItemGroup: run not identified, falling back to " + scoped.size()
-                    + " run(s) cached within itemGroup " + itemGroup.getFullName());
-        }
-
-        List<C> result = new ArrayList<>();
-        for (Map<String, Credentials> forRun : candidates) {
-            for (Credentials candidate : forRun.values()) {
-                if (type.isInstance(candidate)) {
-                    result.add(type.cast(candidate));
-                }
-            }
-        }
-        LOGGER.fine(() -> "getCredentialsInItemGroup: returning " + result.size() + " candidate(s) of type "
-                + type.getSimpleName());
-        return result;
+        LOGGER.fine(() -> "getCredentialsInItemGroup: called without a Run (itemGroup=" + itemGroup.getFullName()
+                + ") - ephemeral credentials are Run-scoped and cannot be resolved without one, returning an "
+                + "empty list rather than guessing");
+        return Collections.emptyList();
     }
 
     /**
-     * The run-aware overload - see the class javadoc ("Closing the gap
-     * properly"). When {@code run} is supplied, it is used directly: exactly
-     * this run's own cache, nothing else, no correlation guesswork at all.
-     * When it isn't (a caller with no run to give, e.g. a job-config
-     * credential dropdown), this falls through to the 4-argument override
-     * above, preserving its {@code CpsThread}/{@code itemGroup}-scoped
-     * fallback behavior unchanged.
+     * The run-aware overload - see the class javadoc ("Run identification:
+     * known, or nothing"). When {@code run} is supplied, it is used
+     * directly: exactly this run's own cache, nothing else, no correlation
+     * guesswork at all. When it isn't (a caller with no run to give, e.g. a
+     * job-config credential dropdown), this falls through to the 4-argument
+     * override above, which answers with an empty list rather than
+     * guessing.
      */
     @NonNull
     @Override
@@ -227,24 +180,6 @@ public class EphemeralCredentialsProvider extends CredentialsProvider {
         LOGGER.fine(() -> "getCredentialsInItemGroup(run): run=" + runId + " identified directly, returning "
                 + result.size() + " candidate(s) of type " + type.getSimpleName());
         return result;
-    }
-
-    /**
-     * Whether {@code run}'s own job lives inside {@code itemGroup} itself,
-     * or inside any folder nested within it - the same direction Jenkins'
-     * own folder-scoped credential visibility works (a folder's items can
-     * see credentials scoped at that folder or an ancestor, never the
-     * reverse).
-     */
-    private static boolean isWithin(@NonNull ItemGroup<?> itemGroup, @NonNull Run<?, ?> run) {
-        ItemGroup<?> container = run.getParent().getParent();
-        while (container != null) {
-            if (container == itemGroup) {
-                return true;
-            }
-            container = (container instanceof Item) ? ((Item) container).getParent() : null;
-        }
-        return false;
     }
 
     /**
