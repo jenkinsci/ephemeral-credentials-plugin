@@ -105,6 +105,10 @@ import org.springframework.security.core.Authentication;
  * Run)} below). With that feature in place, this class simply uses the value
  * directly -- no fallback correlation is attempted through any other channel.</p>
  *
+ * <p>NOTE: Until the {@code credentials-plugin} API update is merged, a
+ * version from Jenkins Incrementals or a locally built fork can be pinned
+ * in {@code pom.xml} file.</p>
+ *
  * <p>When a caller genuinely has no {@link Run} to give at all and calls the
  * 4-argument overload below, e.g. a job-config credential dropdown - the
  * only correct answer is an empty list: "no ephemeral credential applies
