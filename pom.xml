@@ -152,6 +152,12 @@
       <groupId>org.jenkins-ci.plugins.workflow</groupId>
       <artifactId>workflow-cps</artifactId>
     </dependency>
+    <dependency>
+      <!-- WithEphemeralCredentialsSupport catches FlowInterruptedException
+                 from here - real (non-test) main code, not just tests. -->
+      <groupId>org.jenkins-ci.plugins.workflow</groupId>
+      <artifactId>workflow-step-api</artifactId>
+    </dependency>
 
     <!-- Test-only: WithEphemeralCredentialsCustomLibraryTest, illustrating
              a custom credential type defined in a shared library rather than
@@ -204,11 +210,6 @@
     <dependency>
       <groupId>org.jenkins-ci.plugins.workflow</groupId>
       <artifactId>workflow-job</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.jenkins-ci.plugins.workflow</groupId>
-      <artifactId>workflow-step-api</artifactId>
       <scope>test</scope>
     </dependency>
 
