@@ -743,20 +743,6 @@ BOM now covers -- run `mvn dependency:tree -Dincludes=<groupId>:<artifactId>`
 yourself to re-verify any of this later, since it does drift as the common
 BOM gets updated:**
 
-* `pipeline-model-declarative-agent` (`<version>1.1.1</version>` in
-  `pom.xml`): still not covered by the BOM -- a small, rarely-updated
-  plugin that appears to have never been added to BOM coverage. Still
-  pinned by hand, still the only credential/pipeline plugin in this
-  project's own dependencies with an explicit `<version>` left.
-* `jenkins-test-harness`: **no longer pinned.** This project used to
-  override `jenkins-test-harness.version` to work around a
-  `NoSuchMethodError` against the parent POM's own default at an older
-  `jenkins.baseline` -- re-checking after the baseline moved forward, the
-  parent's default (`2573.vd91b_8a_43e019`) is now what the BOM itself
-  also resolves to, the override had become genuinely obsolete (the
-  parent POM's own `BanObsoleteDependencyOverrides` enforcer rule
-  actually caught this and failed the build until the override was
-  removed), and the full test suite passes clean without it.
 * `credentials`, `git` (both the plain and `tests`-classifier
   dependencies), `pipeline-groovy-lib`, `scm-api` (`tests` classifier):
   **no longer pinned either** -- all resolve straight from the BOM now

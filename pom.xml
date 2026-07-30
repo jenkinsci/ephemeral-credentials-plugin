@@ -162,12 +162,6 @@
       <scope>test</scope>
     </dependency>
 
-    <dependency>
-      <groupId>org.jenkins-ci.main</groupId>
-      <artifactId>jenkins-test-harness</artifactId>
-      <scope>test</scope>
-    </dependency>
-
     <!-- Test-only: declarative pipeline + JenkinsRule integration tests. -->
     <dependency>
       <groupId>org.jenkins-ci.plugins</groupId>
@@ -225,16 +219,6 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <!-- Not managed by the Jenkins BOM even at its latest snapshot for
-                 this core line (checked 2026-07) - a small, rarely-updated
-                 plugin that appears to never have been added to BOM
-                 coverage. Pinned by hand, matching internal JSL. -->
-      <groupId>org.jenkinsci.plugins</groupId>
-      <artifactId>pipeline-model-declarative-agent</artifactId>
-      <version>1.1.1</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
       <groupId>org.jenkinsci.plugins</groupId>
       <artifactId>pipeline-model-definition</artifactId>
       <scope>test</scope>
@@ -259,20 +243,4 @@
     </pluginRepository>
   </pluginRepositories>
 
-  <build>
-    <plugins>
-      <!-- We have real tests now (WithEphemeralCredentialsTest); the
-                 parent POM's auto-generated JenkinsRule smoke test
-                 (InjectedTest) references a org.jvnet.hudson.test.injected
-                 package this jenkins-test-harness version doesn't have. -->
-      <plugin>
-        <groupId>org.jenkins-ci.tools</groupId>
-        <artifactId>maven-hpi-plugin</artifactId>
-        <configuration>
-          <disabledTestInjection>true</disabledTestInjection>
-        </configuration>
-      </plugin>
-
-    </plugins>
-  </build>
 </project>
