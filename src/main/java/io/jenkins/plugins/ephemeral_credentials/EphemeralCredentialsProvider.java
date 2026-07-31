@@ -187,8 +187,9 @@ public class EphemeralCredentialsProvider extends CredentialsProvider {
     public void put(@NonNull Run<?, ?> run, @NonNull String credentialsId, @NonNull Credentials credentials) {
         byRun.computeIfAbsent(run.getExternalizableId(), key -> new ConcurrentHashMap<>())
                 .put(credentialsId, credentials);
+        // Never log the value itself, just the identifier:
         LOGGER.fine(() ->
-                "put: cached '" + credentialsId + "' for " + run.getExternalizableId() + " (never the value itself)");
+                "put: cached '" + credentialsId + "' for " + run.getExternalizableId());
     }
 
     @CheckForNull
