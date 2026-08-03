@@ -2,6 +2,18 @@
 
 A Jenkins plugin providing:
 
+[NOTE]
+======
+Pipeline-only. Everything below -- the `withEphemeralCredentials` step, the
+`ephemeralCredentialsPut`/`Find`/`Has`/`Forget` steps, the `ephemeralCredentials`
+map-like variable, and the five `ephemeralXxx` credential factories -- is a
+Pipeline `GlobalVariable`, usable only from Pipeline (declarative or scripted)
+Jenkinsfiles. None of it is available to classic/Freestyle jobs.
+
+If someone finds a way to reliably discover the `Run` which called us in other
+job types -- pull requests would be welcome.
+======
+
 * `EphemeralCredentialsProvider` -- a `CredentialsProvider` that resolves
   credentials only for Pipeline builds that put something into it themselves.
   Nothing it holds is ever written to disk -- a plain in-memory map, cleared
@@ -67,9 +79,9 @@ pipeline {
                     ephemeralSecretText(id: 'NEXUS_TOKEN', description: 'Nexus API token')
                 ]) {
                     withCredentials([usernamePassword(credentialsId: 'DB_ADMIN', usernameVariable: 'U', passwordVariable: 'P')]) {
-                        sh 'run-migration --user "$U" --password "$P"'
+                        sh './run-migration --user "$U" --password "$P"'
                     }
-                    // an unmodified checkout(credentialsId: 'NEXUS_TOKEN', ...) here would also just work
+                    // an unmodified checkout(credentialsId: 'NEXUS_TOKEN', ...) here should also just work
                 }
             }
         }
@@ -78,18 +90,21 @@ pipeline {
 ----
 
 If `DB_ADMIN` and `NEXUS_TOKEN` values already resolve via a "real"
-credentials store (global/folder/job-scoped), nothing is prompted -- the
-`withEphemeralCredentials` step checks `CredentialsProvider.findCredentialById`
-first. Only a genuinely missing ID triggers `input`, guarded by a `lock` keyed
+credentials store (global/folder/job-scoped), nothing is prompted -- like
+other call paths, the `withEphemeralCredentials` step checks the common
+entry point, `CredentialsProvider.findCredentialById()` method, first.
+
+Only a genuinely missing ID triggers `input`, guarded by a `lock` keyed
 on `<runId>-<credentialId>` so parallel branches or repeated calls within
 the same run (unless Jenkins gets restarted and the job goes on) don't
 prompt twice.
 
 === Pre-warming: collecting credentials early, using them much later
 
-`withEphemeralCredentials` doesn't require its body to do anything -- the
-`for` loop that resolves/prompts/caches each declared ID runs regardless of
-what the body contains, and an empty closure is perfectly valid:
+The `withEphemeralCredentials` step does not *require* its `body` to do
+anything -- the `for` loop that resolves/prompts/caches each declared ID
+runs regardless of what the `body` contains, and an empty closure is
+perfectly valid:
 
 [source,groovy]
 ----
@@ -132,10 +147,7 @@ deep inside a long build, minutes or hours after whoever triggered it has
 stopped watching. Here we move the (possibly interactive) credential
 resolution into a cheap, early, empty-bodied call, and let everything
 downstream -- wrapped or not -- just find the value already cached for
-the rest of the run. It is also a manual approximation of the
-`pipeline { options { ... } }` form floated earlier in this project's
-design discussion (resolving declared IDs once before any stage runs),
-buildable today with zero code changes here.
+the rest of the run.
 
 **Caveat worth knowing:** the cache is the in-memory JVM singleton described
 below: it does not survive a controller restart, but a *paused* Pipeline
@@ -162,40 +174,35 @@ Holds a `Map<runExternalizableId, Map<credentialsId, Credentials>>` in memory
 with disabled serialization, so that sensitive credentials can be contained.
 
 Its `getCredentialsInItemGroup(...)` (the method Jenkins' generic credentials
-lookup actually calls in this plugin version -- see "API surface" below)
-tries to resolve *which build is asking* via
-`CpsThread.current().getExecution().getOwner().getExecutable()`
-(`CpsRuns.current()`).
+lookup calls) resolves *which build is asking* from the calling thread's own
+CPS execution context (`CpsThread.current()`, anchored to the whole build's
+`CpsFlowExecution` rather than to any transient per-`node`-block `Executor`,
+so it stays correct across parallel branches and sequential stage/agent
+changes).
 
 [NOTE]
-.Technical note
-======
-This does not look up the build via `hudson.model.Executor` -- an `Executor`
-is a transient, per-`node`-block resource that changes across parallel
-branches and sequential stages/agents, whereas a `CpsFlowExecution` is
-anchored to the whole build's lifetime and shared by every branch of a
-`parallel` block.
-======
+====
+That resolution only works when the caller is itself CPS-interpreted Pipeline
+code -- this plugin's own `withEphemeralCredentials` step, a shared-library
+script, or the Jenkinsfile itself. Some other callers reach this provider
+from a thread outside the CPS interpreter entirely (for example, the
+`credentials-binding` plugin's `withCredentials` step does), in which case the build
+can't be identified this way. When that happens, the provider falls back to
+considering every *other* run's cache too, but only among runs whose job
+lives within the same folder scope (`itemGroup`) the lookup was made for --
+never literally every cached run instance-wide -- and lets the caller's own
+by-ID filtering pick the right entry. That's correct as long as two
+different runs in the same folder scope aren't concurrently caching
+different values under the exact same literal credential ID at the same
+time; weigh that narrow residual risk against how likely concurrent builds
+of the same job are for whatever pipeline uses this. If it matters for your
+use case, salting the credential ID with something like `${env.BUILD_ID}`
+avoids the collision entirely.
 
-**Discovered limitation, not just a caveat:** that resolution only works
-when the caller is itself CPS-interpreted code (such as our own
-`WithEphemeralCredentials.groovy` resource, or a shared-library script,
-or the Jenkinsfile pipeline script itself). It does **not** work when the
-caller is a step's own internal Java implementation running off the CPS
-interpreter thread entirely. This was confirmed empirically against a real
-embedded Jenkins in `WithEphemeralCredentialsTest`: `credentials-binding`
-plugin's `withCredentials` performs its own `findCredentialById` call from
-such a thread, where `CpsThread.current()` is `null`. When that happens,
-the provider falls back to considering *every* run's cache and lets the
-caller's own by-ID filtering pick the right entry. That's correct as long
-as two different runs aren't concurrently caching different values under
-the exact same literal credential ID at the same time -- which is a real,
-narrow residual risk you should weigh against how likely concurrent builds
-of the same job are for whatever pipeline uses this, not a merely
-theoretical one. If this bites you in practice, and you know that certain
-credentials used by your job would never be persistently configured,
-consider using `String` variables to pass the credential names and salt
-these names with a random string or something like `${env.BUILD_ID}` manually.
+This can be fixed by a new API proposed for `credentials-binding` plugin
+to pass through the `Run` involved. Pull requests are currently pending
+against that plugin and this one, to solve this problem properly.
+====
 
 === `EphemeralCredentialsRunListener`
 
@@ -209,7 +216,7 @@ Registered via the `GlobalVariable` extension point, the same mechanism that
 makes `env`/`params`/`currentBuild` available without an import. The actual
 logic ships as a `.groovy` **resource** file (not precompiled Java/Groovy) and
 is parsed on demand through the calling script's own `GroovyClassLoader` --
-the same technique `docker-workflow-plugin`'s `DockerDSL` uses for its
+the same technique `DockerDSL` in `docker-workflow-plugin` uses for its
 `Docker.groovy` for example -- so it goes through the same CPS transformation
 as a shared-library script, which is what makes its calls to `lock` and `input`
 steps provided by the pipeline script context safe.
@@ -222,26 +229,30 @@ would find it already cached when their turn comes.
 The user may cancel the `input` step, causing the credential to remain unknown
 but not interrupting the pipeline immediately in any other way.
 
-Two non-obvious things that took several iterations against a real embedded
-Jenkins to get right, both worth knowing before touching this file:
+Two things worth knowing before touching this file:
 
 * **The calling build's own sandbox status applies to this code too.**
   Since it's compiled through the *calling* script's classloader, a
   sandboxed Jenkinsfile makes this code sandboxed as well -- every non-step
-  Java call it makes (even into this plugin's own classes) needs an entry in
-  `whitelist.txt` (loaded by `EphemeralCredentialsWhitelist`), or it's
-  rejected with `RejectedAccessException`, the same way `credentials-binding`
-  and `docker-workflow-plugin` ship their own whitelists. This includes
-  things that look like "obviously fine" Jenkins core calls --
-  `currentBuild.rawBuild` itself was rejected during development.
-* **Never hold a live `Run` (or this plugin's own singleton) across a
-  `lock`/`input` pause.** This class sits in the script's binding for the
-  whole build, so CPS's own program-state serialization walks it every time
-  the pipeline pauses. `WorkflowRun` isn't Java-serializable, so an earlier
-  version that stored a `Run` field failed with `NotSerializableException`
-  the moment `input()` paused. The fix: store only the plain
-  `externalizableId` String, and re-resolve `Run.fromExternalizableId(...)`
-  fresh right before each synchronous use, never held across a pause.
+  Java call it makes (even into this plugin's own classes) needs to be
+  explicitly approved for sandboxed use, or it's rejected with
+  `RejectedAccessException`, the same way `credentials-binding` and
+  `docker-workflow-plugin` approve their own DSL glue. This plugin does that
+  approval with `@org.jenkinsci.plugins.scriptsecurity.sandbox.whitelists.Whitelisted`
+  annotation directly on the relevant methods (all on this plugin's own classes,
+  in `WithEphemeralCredentialsSupport`, `EphemeralCredentialSpec` and
+  `EphemeralCredentialsAccessor`) rather than a separate static allowlist
+  file, so the approved surface stays visible right next to the code it
+  approves.
+* **Never hold a live `Run` across a `lock`/`input` pause.** This class sits
+  in the script's binding for the whole build, so CPS's own program-state
+  serialization walks it every time the pipeline pauses, and `WorkflowRun`
+  isn't Java-serializable. The class itself only ever holds a plain
+  `externalizableId` String (used to name the per-credential `lock`
+  resource); the actual `Run` is resolved fresh, on demand, by
+  `WithEphemeralCredentialsSupport` from the calling thread's own CPS
+  context each time it's needed, never held in a field or a variable that
+  could still be live across a pause.
 
 === Credential type factories
 
@@ -283,8 +294,8 @@ Every `EphemeralCredentialSpec` carries:
 * the logic to turn the answers into a `Credentials` object.
 
 Since these factories never invoke a pipeline step themselves, a plain
-precompiled `Closure` is fine for them -- no CPS transformation, no
-whitelist entries needed (unlike `WithEphemeralCredentials.groovy` itself).
+precompiled `Closure` is fine for them -- no CPS transformation, no sandbox
+approval needed (unlike `WithEphemeralCredentials.groovy` itself).
 
 **Secret file and certificate collect their content as pasted base64 text,
 not a real file upload.** The `input` step's `FileParameterDefinition` writes
@@ -300,20 +311,20 @@ faithful reproduction of the web UI's upload widget.
 **Every field that carries actual secret material -- `contentBase64`,
 `keystoreBase64`, `privateKey`, `password`, `passphrase`, `secret`,
 `username`+`password` -- is collected via `PasswordParameterDefinition`,
-never `TextParameterDefinition`/`StringParameterDefinition`.** This wasn't
-always true: initial plugin code iterations used `TextParameterDefinition`
-(multi-line, unmasked) for `contentBase64`, `keystoreBase64` and `privateKey`,
-and switching them was a deliberate fix, not a style choice -- see
+never `TextParameterDefinition`/`StringParameterDefinition`.** See
 "<<what-gets-saved-where,What can get saved, when and where>>" below for
-why the parameter type is a real security decision, not just a UI detail.
+why the parameter type is a real security decision, not just a UI detail --
+in short, a `TextParameterDefinition`/`StringParameterDefinition` answer is
+persisted to the build's own XML on disk in cleartext, forever, while a
+`PasswordParameterDefinition` answer is encrypted.
 
-For `contentBase64`/`keystoreBase64` the switch was free: `Base64.getDecoder()`
-already rejects embedded whitespace, so a wrapped/multi-line paste never
-actually worked anyway, and both these fields were effectively
-single-line-only already.
+For `contentBase64`/`keystoreBase64` this costs nothing in practice:
+`Base64.getDecoder()` already rejects embedded whitespace, so these fields
+are effectively single-line-only regardless of parameter type.
 
-The `privateKey` (a genuine multi-line PEM block) took more care -- see
-`EphemeralSSHUserPrivateKey` discussion below.
+The `privateKey` (a genuine multi-line PEM block) needs a bit more care to
+fit through a single-line field -- see `EphemeralSSHUserPrivateKey`
+discussion below.
 =========
 
 **The `ephemeralSSHUserPrivateKey` has a soft dependency on the "SSH
@@ -348,11 +359,10 @@ in cleartext every time (see the analysis section below) -- so instead:
   reassembles it with real newlines only immediately around the BEGIN/END
   marker lines -- the base64 body itself is written back as one
   unbroken line, no re-wrapping at any particular column width needed.
-. This is not a guess: verified empirically against `ssh-keygen -y`,
-  `openssl pkey`/`genpkey`, and `ssh-add` (loading the reconstructed key
-  into a real `ssh-agent` and using it to `ssh-keygen -Y sign` a test
-  payload) during this project's own security review (2026-07). All three
-  tools parsed/used a reconstructed, single-unbroken-line-body key
+. This is not a guess: verified against `ssh-keygen -y`, `openssl
+  pkey`/`genpkey`, and `ssh-add` (loading the reconstructed key into a real
+  `ssh-agent` and using it to `ssh-keygen -Y sign` a test payload). All
+  three tools parsed/used a reconstructed, single-unbroken-line-body key
   identically to the original traditionally-wrapped one -- for both the
   newer `OPENSSH PRIVATE KEY` format and the older PKCS#8 `PRIVATE KEY`
   PEM format. PEM's traditional 64/70-column wrapping is a legacy
@@ -411,10 +421,7 @@ to disk. That guarantee is easy to state and easy to accidentally break
 when adding a *new* credential type, because most of the actual risk lives
 outside this plugin's own code -- in how Jenkins core and
 `pipeline-input-step` treat the `input` step's answers, and in how CPS
-persists a paused pipeline's state. Both are documented in detail below,
-based on decompiling the actual `pipeline-input-step`/`jenkins-core`
-sources during this project's own security review (2026-07), not
-assumptions about how they "probably" work.
+persists a paused pipeline's state. Both are documented in detail below.
 
 ==== 1. The `input` step parameter type controls whether the answer is encrypted on disk -- unconditionally, every time
 
@@ -456,10 +463,8 @@ for as long as that build record exists.
 
 **This is why every field carrying secret material in this plugin's own
 five credential types is a `PasswordParameterDefinition`, with no
-exception** -- including `contentBase64`/`keystoreBase64`/`privateKey`,
-which used `TextParameterDefinition` in an earlier version of this plugin
-and were fixed for exactly this reason (see "Credential type factories"
-above).
+exception** -- including `contentBase64`/`keystoreBase64`/`privateKey` (see
+"Credential type factories" above).
 
 **If you write a custom `EphemeralCredentialSpec`, this is the
 single most important rule: never collect secret material through
@@ -504,7 +509,7 @@ CPS-continuation-reachable in the first place. That is **not** a property
 every `EphemeralCredentialSpec` has intrinsically: for example, one defined
 as a JSL `src/` class (per "Extending with more types" above) is itself
 ordinary CPS-transformed Groovy, exactly like a Jenkinsfile or a `vars/`
-script. Notably, see below about experiments with `@NonCPS`.
+script -- see the `@NonCPS` note below.
 
 The `WithEphemeralCredentials.groovy` script itself only takes one, narrower
 precaution given that: it never assigns `input` step's return value to a
@@ -520,24 +525,21 @@ place -- CPS's persistence to `program.dat` is tied to step
 invocations, not plain statement execution, and no further step call
 happens between `input` returning and the credential being cached.
 
-**A stronger-looking option was tried and does not work here -- worth
-knowing before you reach for it yourself:** wrapping the
-"materialize-and-cache" logic in a `@NonCPS`
+**`@NonCPS` looks like a stronger guarantee here, but does not work for
+this purpose -- worth knowing before you reach for it yourself.** Wrapping
+the "materialize-and-cache" logic in a `@NonCPS`
 (`com.cloudbees.groovy.cps.NonCPS`) method looks like it should give an
 even harder guarantee (a `@NonCPS` method has no CPS continuation at all
 for the interpreter to ever walk). It does, right up until that method
 needs to call a custom `EphemeralCredentialSpec` implementation class
 instance's `materialize()` method -- if that spec is a JSL `src/` class,
 its `materialize()` code **is** CPS-transformed, and a `@NonCPS` method
-cannot call into CPS-transformed code at all.
-
-* Confirmed empirically against a real embedded Jenkins running
-  `WithEphemeralCredentialsCustomLibraryTest`: every such call failed
-  with `CpsCallableInvocation` logging the infamous "expected to call X
-  but wound up catching Y" mismatch error (see the
-  https://jenkins.io/redirect/pipeline-cps-method-mismatches/ page), which
-  breaks the entire "extend via JSL, no plugin release needed" story this
-  plugin advertises.
+cannot call into CPS-transformed code at all: every such call fails with
+`CpsCallableInvocation` logging the infamous "expected to call X but wound
+up catching Y" mismatch error (see the
+https://jenkins.io/redirect/pipeline-cps-method-mismatches/ page), which
+would break the entire "extend via JSL, no plugin release needed" story
+this plugin offers.
 
 If you're writing your own glue code around a custom spec and are tempted
 to reach for `@NonCPS` for extra assurance, this is exactly the trap to
@@ -605,15 +607,24 @@ embedded Jenkins (`JenkinsRule`, JUnit 5 `@WithJenkins`):
   again -- as does a *third*, completely unwrapped `withCredentials` call
   later in the same run, confirming the cache is genuinely visible to
   code that never calls `withEphemeralCredentials` at all.
-* `sshKeySecretFileAndCertificateMaterializeCorrectly`: all three of the
-  newer credential types (initial support/PoC focused on `EphemeralSecretText`
-  and `EphemeralUsernamePassword`), resolved in one `withEphemeralCredentials`
-  block (three sequential `input` pauses), each consumed through its standard
-  `withCredentials` binding (`sshUserPrivateKey`/`file`/`certificate`)
-  inside the same pipeline run -- not by querying
-  `EphemeralCredentialsProvider` after the build finishes, since
-  `EphemeralCredentialsRunListener` clears the cache for a run as soon as
-  it's done, so nothing would be left to find by then.
+* `decliningInputMovesOnWithoutTheCredential`: declining the `input` prompt
+  lets the pipeline continue without the credential rather than aborting
+  the build; a later request for the same ID prompts again instead of
+  reusing anything (nothing was cached for a declined answer).
+* `sshKeySecretFileAndCertificateMaterializeCorrectly`: the SSH key, secret
+  file, and certificate credential types, resolved in one
+  `withEphemeralCredentials` block (three sequential `input` pauses), each
+  consumed through its standard `withCredentials` binding
+  (`sshUserPrivateKey`/`file`/`certificate`) inside the same pipeline run --
+  not by querying `EphemeralCredentialsProvider` after the build finishes,
+  since `EphemeralCredentialsRunListener` clears the cache for a run as soon
+  as it's done, so nothing would be left to find by then.
+* `managementStepsAndMapStyleAccessWork`: the `ephemeralCredentialsPut`/
+  `Find`/`Has`/`Forget` steps and the `ephemeralCredentials` map-like
+  variable, exercised without ever pausing on `input` (credentials
+  pre-populated programmatically), consumed through the standard
+  `withCredentials` binding to confirm real integration with the ordinary
+  credential lookup path.
 
 The `ssh-credentials` plugin is present on this project's own test classpath
 (it is a normal, if `optional`, compile dependency of this plugin: `optional`
@@ -644,53 +655,35 @@ independently-named factory, parallel to this plugin's own
 same type `EphemeralSecretText` already wraps -- purely to prove the
 extension mechanism, not to add a genuinely new credential type).
 
-**This test uses ordinary JUnit 5 (`@WithJenkins`, `@Test`), the same as
-the rest of this project's suite -- it did not always.** It started out
-deliberately classic JUnit 4 (`@Rule`, `org.junit.Test`, with
-`junit-vintage-engine` letting the JUnit-Platform-based surefire run it
-alongside the rest), since `GitSampleRepoRule` -- the standard way to test
-SCM-loaded shared libraries -- is a classic JUnit 4 `@Rule` with no JUnit 5
-form at all. It was converted once this project's enforcer configuration
-started banning any `org.junit.*` import in test code outright (a
-`RestrictImports` rule, `check-junit-imports` execution -- see the Build
-section), which rules out `@Rule` itself along with everything else in
-that package. `GitSampleRepoRule.before()`/`after()` are now driven
-directly from `@BeforeEach`/`@AfterEach` instead of through a rule
-mechanism; `junit-vintage-engine` is no longer a dependency of this
-project at all, having become unnecessary once no test class needed it.
+This test uses ordinary JUnit 5 (`@WithJenkins`, `@Test`), the same as the
+rest of this project's suite -- this project's enforcer configuration bans
+any `org.junit.*` (JUnit 4) import in test code outright (a `RestrictImports`
+rule, `check-junit-imports` execution -- see the Build section).
+`GitSampleRepoRule` -- the standard way to test SCM-loaded shared libraries,
+and a classic JUnit 4 `@Rule` with no JUnit 5 form of its own -- is driven
+directly from `@BeforeEach`/`@AfterEach` instead of through a rule mechanism.
 
-That conversion surfaced one thing worth knowing if this test needs
-touching again: `@WithJenkins` annotation's `JenkinsExtension` boots
-a `JenkinsRule` instance by calling `rule.before()` directly -- never
-calling `apply(Statement, Description)` -- and `JenkinsRule` class' own
-`timeout` field is only ever enforced *inside* an `apply(...)` call.
-So a `@WithJenkins`-style test never had that watchdog active
-in the first place, confirmed by reading `jenkins-test-harness`'s own
-`JenkinsExtension`/`JUnit5JenkinsRule` sources -- unlike the classic
-`@Rule public JenkinsRule j = new JenkinsRule() {{ timeout = 600; }}`
-field this test used before conversion, needed specifically because this
-test's heavier plugin set (`git`, `scm-api`, `pipeline-groovy-lib`, and
-their own transitive dependencies) made plugin discovery alone slower here
-than the 180-second default of a `JenkinsRule`. Neither that field nor the
-`@Test` method's own `@Timeout(600)` (which only wraps the test method's
-own invocation, not the parameter resolution that boots `JenkinsRule`)
-actually bounds this test's boot time today -- it is effectively
-unbounded except for whatever timeout Surefire itself might apply. That
-was an acceptable trade to make in exchange for satisfying the
-`RestrictImports` rule; `@Timeout(600)` still meaningfully bounds
-everything from Jenkins being up onward.
+Worth knowing if this test needs touching again: `@WithJenkins` annotation's
+`JenkinsExtension` boots a `JenkinsRule` instance by calling `rule.before()`
+directly, never `apply(Statement, Description)` -- and the `timeout` field
+of a `JenkinsRule` is only ever enforced *inside* an `apply(...)` call, so it
+has no effect for a `@WithJenkins`-style test. Since this test's heavier
+plugin set (`git`, `scm-api`, `pipeline-groovy-lib`, and their own
+transitive dependencies) makes plugin discovery noticeably slower than
+other tests here, its own `@Test` method carries an explicit
+`@Timeout(600)` instead -- which bounds the test method's own invocation,
+but not the `JenkinsRule` boot time itself (the parameter resolution that
+happens before the method runs), so overall test time is effectively
+bounded only by whatever timeout Surefire itself applies.
 
-A non-blocking warning also surfaced during this work, worth watching:
-`workflow-cps` logs (but does not yet enforce) a
-`GroovySourceFileAllowlist` check against loading
+One more thing worth watching: `workflow-cps` logs (but does not yet
+enforce) a `GroovySourceFileAllowlist` check against loading
 `WithEphemeralCredentials.groovy` "without sandbox protection" the way
 `WithEphemeralCredentialsGlobalVariable` does (`getResourceAsStream(...)` +
 `parseClass(...)`, described above). The build still succeeds today, but
-the warning message describes an opt-in allowlist system
-(`GroovySourceFileAllowlist.DefaultAllowlist.ALLOWED_SOURCE_FILES`) that a
-future `workflow-cps` release could plausibly tighten from "warn" to
-"enforce" -- worth re-checking if this plugin's `workflow-cps` dependency
-is ever bumped.
+a future `workflow-cps` release could plausibly tighten that check from
+"warn" to "enforce" -- worth re-checking if this plugin's `workflow-cps`
+dependency is ever bumped.
 
 Run with `mvn test`.
 
@@ -712,39 +705,22 @@ the parent POM unconditionally; Spotless is already fully configured
 there too (Palantir Java Format for `.java`, `sortPom` for `pom.xml`) but
 ships **off** by default behind `spotless.check.skip` -- this project
 overrides that property to `false` rather than declaring a second,
-separate `spotless-maven-plugin` block (which would just duplicate the
-inherited one, and risks configuring the wrong formatter -- an earlier,
-wrong attempt at this pinned `googleJavaFormat` instead of the
-`palantirJavaFormat` the parent actually uses, and would have run as a
-second, redundant execution). Fix formatting issues with `mvn
-spotless:apply`.
-
-`mvn clean compile -Dmaven.compiler.showDeprecation=true` also confirms
-the other credential-type constructors compile clean under today's
-resolved versions, but with real (not hypothetical) deprecation warnings
-across all five credential-type source files: the 3-argument
-`PasswordParameterDefinition(String, String, String)` constructor used
-everywhere `input` parameters are built, plus `SecretBytes.fromBytes(byte[])`
-and `UploadedKeyStoreSource(SecretBytes)` in `EphemeralCertificate`/
-`EphemeralSecretFile`. All still compile-clean (warnings, not errors), so
-left alone for now -- worth revisiting (and re-running that same command
-to see what's current) next time this project's core baseline moves.
+separate `spotless-maven-plugin` block, which would just duplicate the
+inherited one. Fix formatting issues with `mvn spotless:apply`.
 
 The `lockable-resources` and `pipeline-input-step` plugins are declared as
 real (non-test) dependencies, even though no Java code here imports their
-classes -- the `WithEphemeralCredentials.groovy` calls their `lock`/`input`
+classes -- `WithEphemeralCredentials.groovy` calls their `lock`/`input`
 steps by name, and declaring them here is what makes maven-hpi-plugin
-record them as required plugin dependencies in the manifest, so an ultimate
-Jenkins controller would refuse to load this plugin without them installed.
+record them as required plugin dependencies in the manifest, so a Jenkins
+controller refuses to load this plugin without them installed.
 
-Note on API surface: this version of `credentials-plugin` does not declare
+Note on API surface: `credentials-plugin` does not declare
 `getCredentials(...)` as abstract -- it's kept only as a deprecated
 compatibility shim. The real extension point subclasses must override is
 `getCredentialsInItemGroup(Class, ItemGroup, org.springframework.security
 .core.Authentication, List<DomainRequirement>)`, which is what this plugin
-does. Confirmed by decompiling the resolved plugin jar during development;
-worth re-checking if the `ephemeral_credentials` dependency version is ever
-bumped.
+does.
 
 Generally, run `mvn dependency:tree -Dincludes=<groupId>:<artifactId>`
 yourself to re-verify any of this later, since it does drift as the common

@@ -52,12 +52,11 @@ import org.jenkinsci.plugins.workflow.cps.GlobalVariable;
  * doCall} rather than two overloaded {@code doCall} methods distinguished
  * by parameter count/type - {@link Closure} subclasses do not reliably
  * support Java-style overload resolution for {@code doCall} the way a
- * plain Java class would; an earlier version with two separate overloads
- * silently dispatched calls incorrectly (confirmed against a real embedded
- * Jenkins: the {@code id:}/{@code credentials:} shape appeared to succeed -
- * no exception - but cached nothing findable afterwards). One {@code
- * doCall(Map)}, branching on which keys are present, is the same shape
- * every other {@code GlobalVariable} factory in this plugin already uses.</p>
+ * plain Java class would, so two separate overloads risk one shape being
+ * silently mis-dispatched (no exception, but nothing findable afterwards).
+ * One {@code doCall(Map)}, branching on which keys are present, is the same
+ * shape every other {@code GlobalVariable} factory in this plugin already
+ * uses.</p>
  *
  * @see EphemeralCredentialsAccessor
  */

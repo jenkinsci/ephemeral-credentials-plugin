@@ -55,31 +55,28 @@ import org.jenkinsci.plugins.workflow.support.steps.input.Rejection;
  * of it here means only this plugin's own classes ever need sandbox approval.
  *
  * <h2>No {@code Run}/run ID parameter on any {@code @Whitelisted} method</h2>
- * <p>{@link Whitelisted} (like the {@code whitelist.txt} entries it replaces
- * - see below) approves a method signature globally, for every sandboxed
- * script on the whole Jenkins instance, not just for calls arriving via
- * {@code WithEphemeralCredentials.groovy}. An earlier revision of {@link
- * #isResolvable} and {@link #put} accepted the run's ID as a parameter,
- * supplied by the (sandboxed) caller - which meant <em>any</em> sandboxed
- * Pipeline anywhere could have called {@code
- * WithEphemeralCredentialsSupport.isResolvable("some-other-job#5",
- * "SOME_ID")} or the {@code put} equivalent directly, using nothing but a
- * guessed or known {@code externalizableId}, completely bypassing {@code
- * withEphemeralCredentials} and reading or poisoning a <em>different</em>
- * run's ephemeral credential cache. Neither method accepts a run identifier
- * from the caller anymore - both resolve "the run actually executing this
- * exact call" themselves, via {@link #requireCurrentRun()} (the same {@link
- * CpsRuns#current()}-based mechanism {@link
- * EphemeralCredentialsAccessor#forCurrentRun} already used), so a caller can
- * never direct either method at any run other than its own.</p>
+ * <p>{@link Whitelisted} approves a method signature globally, for every
+ * sandboxed script on the whole Jenkins instance, not just for calls
+ * arriving via {@code WithEphemeralCredentials.groovy}. That is why neither
+ * {@link #isResolvable} nor {@link #put} accepts a run identifier as a
+ * parameter: a method that did would let <em>any</em> sandboxed Pipeline
+ * anywhere call it directly with a guessed or known {@code externalizableId}
+ * for some other build - say {@code WithEphemeralCredentialsSupport
+ * .isResolvable("some-other-job#5", "SOME_ID")} - completely bypassing
+ * {@code withEphemeralCredentials} and reading or poisoning a
+ * <em>different</em> run's ephemeral credential cache. Both methods instead
+ * resolve "the run actually executing this exact call" themselves, via
+ * {@link #requireCurrentRun()} (the same {@link CpsRuns#current()}-based
+ * mechanism {@link EphemeralCredentialsAccessor#forCurrentRun} uses), so a
+ * caller can never direct either method at any run other than its own.</p>
  *
  * <h2>No free-text logging method either</h2>
- * <p>An earlier revision also exposed a generic {@code logFine(String
- * message)} passthrough to the sandboxed script, so {@code call()} could log
- * its own narrative messages. That let any sandboxed script write an
- * arbitrary, attacker-chosen message into Jenkins' own system log under this
- * plugin's logger name - a log-forging concern independent of the run-ID one
- * above. Logging now happens only inside methods whose message content is
+ * <p>For the same reason, there is no generic {@code logFine(String
+ * message)} passthrough for {@code call()} to log its own narrative
+ * messages through: a {@code @Whitelisted} method taking an arbitrary
+ * {@code String} would let any sandboxed script write an attacker-chosen
+ * message into Jenkins' own system log under this plugin's logger name.
+ * Logging instead happens only inside methods whose message content is
  * entirely fixed by this class itself, with only well-typed data the method
  * already legitimately handles (a credential ID, the run it just resolved
  * itself) substituted in - never an arbitrary caller-supplied string.</p>

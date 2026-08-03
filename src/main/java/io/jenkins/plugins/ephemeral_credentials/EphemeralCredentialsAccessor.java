@@ -127,12 +127,11 @@ public final class EphemeralCredentialsAccessor implements Serializable {
      * withCredentials} match candidates by calling {@code getId()} on the
      * credential object itself, not by whatever key this store happens to
      * file it under, so a mismatch here would silently store something
-     * that's cached but unfindable through any normal path. Confirmed the
-     * hard way: an earlier version of this method skipped this check, and a
-     * credential materialized as {@code ephemeralUsernamePassword(id:
-     * 'FOO', ...)} then re-{@code put} under a different ID via this method
-     * remained permanently invisible to {@code withCredentials} for that
-     * other ID, with no error anywhere to explain why.
+     * that's cached but unfindable through any normal path: a credential
+     * materialized as {@code ephemeralUsernamePassword(id: 'FOO', ...)} then
+     * {@code put} under a different ID via this method would remain
+     * permanently invisible to {@code withCredentials} for that other ID,
+     * with no error anywhere to explain why.
      */
     @Whitelisted
     public void put(@NonNull String credentialsId, @NonNull Credentials credentials) {

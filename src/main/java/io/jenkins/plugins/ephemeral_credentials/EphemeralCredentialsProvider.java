@@ -64,66 +64,22 @@ import org.springframework.security.core.Authentication;
  * credential is the caller's job (see {@code WithEphemeralCredentials.groovy}
  * step).</p>
  *
- * <h2>Run correlation, and a discovered limitation</h2>
- * <p>Because a single Run's Pipeline script can be executing on several
- * different {@code node}/{@code agent} blocks at once (parallel branches)
- * or move between agents across sequential stages, there is no stable
- * {@code hudson.model.Executor} to correlate against. What is stable for
- * the whole life of the build is its {@code FlowExecutionOwner}, reachable
- * from whichever {@link CpsThread} happens to be running the code that
- * triggered this lookup - see {@link CpsRuns#current()}.</p>
+ * <h2>Identifying which build is asking</h2>
+ * <p>A single build's Pipeline script can be executing on several different
+ * {@code node}/{@code agent} blocks at once (parallel branches) or move
+ * between agents across sequential stages, so there is no stable {@code
+ * hudson.model.Executor} to correlate against. What is stable for the whole
+ * life of the build is its {@code FlowExecutionOwner}, reachable from
+ * whichever {@link CpsThread} happens to be running the code that triggered
+ * this lookup - see {@link CpsRuns#current()}.</p>
  *
  * <p>That resolves correctly when the caller is itself CPS-interpreted code
  * (our own {@code WithEphemeralCredentials.groovy}, a shared-library script,
  * the Jenkinsfile itself). It does <b>not</b> resolve when the caller is a
  * step's own internal Java implementation running off the CPS interpreter
- * thread entirely - confirmed empirically against a real embedded Jenkins:
- * {@code credentials-binding}'s {@code withCredentials} performs its own
- * {@code findCredentialById} call from such a thread, where
- * {@code CpsThread.current()} is {@code null}.</p>
- *
- * <p><b>{@code Thread.currentThread().getName()} was considered, and
- * measured, as a possible substitute or supplement - it doesn't help.</b>
- * Logging the actual thread name/id at both call sites against a real
- * embedded Jenkins running several concurrent jobs showed: when {@code
- * CpsThread.current()} already succeeds, the executing thread happens to be
- * named {@code "Running CpsFlowExecution[<jobName>#<buildNumber>]"} - but a
- * shared executor pool renames whichever physical thread is currently
- * running a given execution, so this is only meaningful read synchronously
- * at the moment of the call, and we don't need it there anyway since {@link
- * CpsRuns#current()} already resolves the run correctly. In the one case
- * that actually needs help - {@code credentials-binding}'s call, where
- * {@code CpsThread.current()} is {@code null} - the thread is consistently
- * named {@code "org.jenkinsci.plugins.workflow.steps.
- * SynchronousNonBlockingStepExecution [#1]"} with the same thread ID, for
- * every different job/run that triggers it: one shared, generic worker
- * thread with zero run-specific information, not a per-run or even
- * per-job-family name. So thread identity carries no signal precisely where
- * a signal would be useful, confirming the {@code itemGroup}-scoped
- * fallback below is genuinely necessary, not just a convenient shortcut.</p>
- *
- * <p><b>{@code hudson.model.Executor.currentExecutor()} was checked too -
- * also {@code null} in this exact call path, both by reading {@link
- * org.jenkinsci.plugins.workflow.steps.SynchronousNonBlockingStepExecution}'s
- * own source and by measuring it directly.</b> Its {@code start()} submits
- * the actual work to a {@code static}, JVM-wide {@code
- * Executors.newCachedThreadPool(...)} shared by every subclass across the
- * whole Jenkins instance (explaining the identical thread name/ID measured
- * above) - a plain generic worker thread with no involvement from Jenkins'
- * own {@code Executor}/build-slot machinery at all, so {@code
- * Executor.currentExecutor()}'s {@code ThreadLocal} (populated only from
- * inside {@code Executor}'s own {@code run()}) was never set on it. Nor
- * does that class expose any other thread-to-context registry: the only
- * place the {@code Run} actually lives on this path is as an ordinary
- * method parameter threaded down through {@code MultiBinding.getCredentials
- * (Run build)} - which is already exactly what surfaces as this method's own
- * {@code itemGroup}/{@code authentication} parameters. Walking the raw
- * {@code Thread.getStackTrace()} at this point wouldn't recover anything
- * more either: it yields class/method/line information only, never the
- * live argument values (like that same {@code build} parameter) sitting in
- * frames above the current one - that requires a debugger-level API
- * (JVMTI/JDI) or bytecode instrumentation, not something a plugin should
- * reach for even if it were available.</p>
+ * thread entirely - {@code credentials-binding}'s {@code withCredentials},
+ * for example, performs its own {@code findCredentialById} call from such a
+ * thread, where {@link CpsThread#current()} is {@code null}.</p>
  *
  * <h2>The unidentifiable-run fallback, and why it's scoped to {@code itemGroup}</h2>
  * <p>When the run can't be identified, this falls back to considering other
@@ -131,25 +87,23 @@ import org.springframework.security.core.Authentication;
  * CredentialsProvider.findCredentialById}) pick the right entry - but
  * <b>only among runs whose job lives within the {@code itemGroup} this
  * method was actually asked about</b>, not literally every cached run
- * project-wide. This matters: tracing {@code credentials-binding}'s actual
- * call path (its {@code Run}-based {@code findCredentialById} overload,
- * through {@code findCredentialByIdInItem(id, type, run.getParent(), ...)})
- * confirms that {@code itemGroup} here is the calling job's own containing
- * folder (or Jenkins root) - Jenkins' extension API simply never passes the
- * specific calling {@code Run} this deep, so there is no way to identify
- * the exact run from this method's parameters alone. Without the {@code
- * itemGroup} scoping, an unfiltered "every cached run" fallback would let a
- * build in one folder receive another, unrelated build's ephemeral value
- * from a completely different folder/team/permission scope, purely because
- * both happened to cache something under the same literal credential ID at
- * the same time - a genuine cross-tenant credential leak, not a theoretical
- * one, since Jenkins folder-scoped credentials exist specifically to
- * enforce that boundary. Scoping the fallback to {@code itemGroup}
- * containment restores that boundary. A narrower residual risk remains:
- * two concurrent runs of the same or sibling jobs *within the same folder
- * scope*, caching different values under the same literal ID, can still
- * collide - weigh that against how likely concurrent builds sharing an ID
- * are for whatever pipeline uses this.</p>
+ * project-wide. This matters because Jenkins' extension API never passes
+ * the specific calling {@code Run} this deep - only its containing {@code
+ * itemGroup} (the job's own folder, or Jenkins root) and effective {@code
+ * Authentication} - so there is no way to identify the exact run from this
+ * method's parameters alone. Without the {@code itemGroup} scoping, an
+ * unfiltered "every cached run" fallback would let a build in one folder
+ * receive another, unrelated build's ephemeral value from a completely
+ * different folder/team/permission scope, purely because both happened to
+ * cache something under the same literal credential ID at the same time - a
+ * genuine cross-tenant credential leak, since Jenkins folder-scoped
+ * credentials exist specifically to enforce that boundary. Scoping the
+ * fallback to {@code itemGroup} containment restores that boundary. A
+ * narrower residual risk remains: two concurrent runs of the same or
+ * sibling jobs <em>within the same folder scope</em>, caching different
+ * values under the same literal ID, can still collide - weigh that against
+ * how likely concurrent builds sharing an ID are for whatever pipeline uses
+ * this.</p>
  */
 @Extension
 public class EphemeralCredentialsProvider extends CredentialsProvider {

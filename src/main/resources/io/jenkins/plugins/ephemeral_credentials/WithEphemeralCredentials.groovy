@@ -47,20 +47,18 @@ import org.jenkinsci.plugins.workflow.steps.FlowInterruptedException
  *
  * <p>The actual {@code Run} instance is re-resolved right before each use -
  * inside {@link WithEphemeralCredentialsSupport}, see below - and never held
- * across a {@code lock}/{@code input} pause point. This is a real, confirmed
- * failure mode, not just a defensive style rule: an intermediate version of
- * {@link #call} evaluated {@code Run.fromExternalizableId(runId)} as one
- * argument of the same {@code EphemeralCredentialsProvider.get().put(...)}
- * call whose *other* argument was {@code script.input(...)} - Groovy
- * evaluates arguments left to right, so the freshly-resolved, non-serializable
- * {@code Run} became a pending argument sitting in the continuation exactly
- * while {@code input} was suspended waiting for a human. The next time CPS
- * checkpointed the paused program to {@code program.dat}, that failed with
- * {@code NotSerializableException: WorkflowRun}, breaking the pipeline
- * (confirmed against a real embedded Jenkins). The fix is what's here now:
- * {@code input}'s own answer is never assigned to a named variable and never
- * shares an argument list with anything that resolves a {@code Run} - it
- * flows straight from {@code script.input(...)} through {@link
+ * across a {@code lock}/{@code input} pause point. Holding a live {@code
+ * Run} across such a pause is a real failure mode, not just a defensive
+ * style rule: Groovy evaluates a call's arguments left to right, so
+ * resolving a {@code Run} as one argument of the same call whose sibling
+ * argument is {@code script.input(...)} would leave that freshly-resolved,
+ * non-serializable {@code Run} sitting in the continuation exactly while
+ * {@code input} is suspended waiting for a human - the next time CPS
+ * checkpoints the paused program to {@code program.dat}, that fails with
+ * {@code NotSerializableException: WorkflowRun}, breaking the pipeline. This
+ * is why {@code input}'s own answer is never assigned to a named variable
+ * and never shares an argument list with anything that resolves a {@code
+ * Run}: it flows straight from {@code script.input(...)} through {@link
  * WithEphemeralCredentialsSupport#toValuesMap} into {@link
  * EphemeralCredentialSpec#materialize}, whose result is passed directly as
  * an argument to {@link #privatePut}, and {@link #privatePut} is the
@@ -71,20 +69,17 @@ import org.jenkinsci.plugins.workflow.steps.FlowInterruptedException
  * <p>{@link #privatePut} is additionally annotated {@code @NonCPS}, so it
  * runs as ordinary, non-suspendable code with no CPS continuation of its own -
  * a stronger guarantee than merely "no step call happens in between." This is
- * safe to do here - unlike an earlier, broader attempt at wrapping the whole
- * materialize-and-cache logic in {@code @NonCPS}, which was reverted -
- * because {@link #privatePut} itself never calls {@link
- * EphemeralCredentialSpec#materialize}: that still happens in {@link #call}'s
- * own CPS-transformed code, where it belongs, since a custom {@link
+ * safe here specifically because {@link #privatePut} itself never calls
+ * {@link EphemeralCredentialSpec#materialize}: that still happens in {@link
+ * #call}'s own CPS-transformed code, where it belongs, since a custom {@link
  * EphemeralCredentialSpec} defined as a JSL {@code src/} class (see
  * "Extending with more types" in the README) is itself CPS-transformed
  * Groovy, and a {@code @NonCPS} method cannot call into CPS-transformed code
- * at all - confirmed empirically: the earlier attempt failed every such call
- * with {@code CpsCallableInvocation}'s "expected to call X but wound up
- * catching Y" mismatch error, breaking that entire extension mechanism.
- * {@link #privatePut} only ever touches plain, always-precompiled types
- * ({@link Credentials}, {@link WithEphemeralCredentialsSupport}), so it has
- * no such risk.</p>
+ * at all (it fails with {@code CpsCallableInvocation}'s "expected to call X
+ * but wound up catching Y" mismatch error). {@link #privatePut} only ever
+ * touches plain, always-precompiled types ({@link Credentials}, {@link
+ * WithEphemeralCredentialsSupport}), so it has no such risk - a broader
+ * {@code @NonCPS} wrapping the whole materialize-and-cache logic would.</p>
  *
  * <h2>Keeping the sandbox surface plugin-only, and run-scoped</h2>
  * <p>Every call this class makes onto a type it doesn't itself define -
@@ -188,7 +183,7 @@ class WithEphemeralCredentials implements Serializable {
     /**
      * Caches an already-materialized credential for this run - see the
      * class javadoc for why this is safe to mark {@code @NonCPS} here,
-     * unlike the broader attempt in earlier iterations that was reverted.
+     * unlike the wider materialize-and-cache logic it's called from.
      */
     @NonCPS
     private void privatePut(String credentialsId, Credentials credentials) {
