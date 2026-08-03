@@ -207,6 +207,13 @@ resolution into a cheap, early, empty-bodied call, and let everything
 downstream -- wrapped or not -- just find the value already cached for
 the rest of the run.
 
+It also allows modernization of your pipelines to use this plugin by
+addressing it in one place, instead of wrapping each code path that might
+use a credential. You would have to know the necessary credential names
+and types by then, though (in some pipelines this in itself might be a
+site- or codepath-specific configuration element, e.g. juggling database
+users vs. admins for the generally same call of a database client).
+
 **Caveat worth knowing:** the cache is the in-memory JVM singleton described
 below: it does not survive a controller restart, but a *paused* Pipeline
 build does (that's the whole point of Pipeline's durability model). If
