@@ -65,7 +65,65 @@ therefore the only way to get one shared, JVM-wide instance.
 
 == Usage
 
+=== Example use-case
+
+Assume you develop a database-backed project, and your testing and automation
+pipelines involve clients which somehow access that database. In your daily
+practice you could juggle different deployments of such a project with very
+different requirements about usability vs. security of the credentials:
+
+* a local instance on your development workstation: no real data to secure,
+a persisted credential is convenient to be quickly available so you can
+iterate without overheads;
+* a farm of instances in your CI: to avoid confusion, you may want unique
+stored credentials (even if predictable or loaded from some Kubernetes
+secrets) just to rule out situations where your client instances might
+access the "wrong" database (e.g. due to failed re-deployments) and so
+corrupt unrelated test runs for somebody else;
+* customer production instances: to minimize the attack surface, you do
+not want the credentials saved anywhere anytime, and always entered when
+some maintenance/patching/whatever job runs (thus presumed called by
+humans who know what they are doing, when and where... and shifting the
+responsibility about security from automation suppliers to a customer
+operations team).
+
+And yet you want to use exactly the same pipelines (or at least shared
+libraries) for all Jenkins deployments that deal with instances of this
+project. For a local instance, you would just persist standard credentials
+in your local Jenkins configuration (manually, JCasC, etc.); for the CI
+testing farm you could have a custom job that prepares the testbed and
+runs the tests, so it can also `put()` the unique value of same-named
+ephemeral credential into the store associated with this `Run`; for the
+customer instance you do not pre-define the credential anywhere at all
+and so require it to be `input()` for every `Run`.
+
+Either way, your jobs call the same custom Jenkins Shared Library routine
+which would ask local providers for a credential named like `DB_ADMIN`,
+and then access the database instance using its value resolved either
+globally or for the current run by the standard step like `withCredentials`.
+
+[source,groovy]
+.JSL/vars/updateDb.groovy
+----
+call() {
+    withEphemeralCredentials([
+        ephemeralUsernamePassword(id: 'DB_ADMIN',
+            description: 'DB admin login for this deployment')
+    ]) {
+        withCredentials([
+            usernamePassword(credentialsId: 'DB_ADMIN',
+                usernameVariable: 'U', passwordVariable: 'P')
+        ]) {
+            sh './run-migration --user "$U" --password "$P"'
+        }
+    }
+}
+----
+
 === Wrapping credential consumers
+
+Here is a single-pipeline variant to illustrate the call stack with
+the Ephemeral Credentials plugin wrapping its consumers:
 
 [source,groovy]
 ----
