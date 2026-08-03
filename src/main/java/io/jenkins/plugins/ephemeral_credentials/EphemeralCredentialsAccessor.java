@@ -30,6 +30,7 @@ import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.model.Run;
 import java.io.Serializable;
 import java.util.Map;
+import org.jenkinsci.plugins.scriptsecurity.sandbox.whitelists.Whitelisted;
 
 /**
  * <p>A convenient, pipeline-facing handle onto {@link EphemeralCredentialsProvider}'s
@@ -38,8 +39,8 @@ import java.util.Map;
  * {@code withEphemeralCredentials} itself only ever touches its own run's
  * cache. Exists so pipelines can pre-populate, inspect, or drop entries in
  * that store directly (e.g. computed at runtime, fetched from some other
- * secrets source mid-pipeline) without a plugin release or custom {@code
- * whitelist.txt} entries of their own.</p>
+ * secrets source mid-pipeline) without a plugin release or any custom
+ * sandbox approval of their own.</p>
  *
  * <p>Holds only the run's plain {@code externalizableId} String, never a
  * live {@code Run} object, for the same reason {@code
@@ -106,11 +107,13 @@ public final class EphemeralCredentialsAccessor implements Serializable {
         return Run.fromExternalizableId(runId);
     }
 
+    @Whitelisted
     @CheckForNull
     public Credentials find(@NonNull String credentialsId) {
         return EphemeralCredentialsProvider.get().find(run(), credentialsId);
     }
 
+    @Whitelisted
     public boolean has(@NonNull String credentialsId) {
         return EphemeralCredentialsProvider.get().has(run(), credentialsId);
     }
@@ -131,6 +134,7 @@ public final class EphemeralCredentialsAccessor implements Serializable {
      * remained permanently invisible to {@code withCredentials} for that
      * other ID, with no error anywhere to explain why.
      */
+    @Whitelisted
     public void put(@NonNull String credentialsId, @NonNull Credentials credentials) {
         if (credentials instanceof IdCredentials) {
             String ownId = ((IdCredentials) credentials).getId();
@@ -153,31 +157,37 @@ public final class EphemeralCredentialsAccessor implements Serializable {
      * secrets source mid-pipeline, computed, ...) without ever pausing on
      * {@code input} at all.
      */
+    @Whitelisted
     public void put(@NonNull EphemeralCredentialSpec spec, @NonNull Map<String, Object> values) {
         put(spec.getId(), spec.materialize(values));
     }
 
+    @Whitelisted
     public boolean forget(@NonNull String credentialsId) {
         return EphemeralCredentialsProvider.get().forget(run(), credentialsId);
     }
 
     /** Groovy {@code ephemeralCredentials['id']} sugar - same as {@link #find}. */
+    @Whitelisted
     @CheckForNull
     public Credentials getAt(@NonNull String credentialsId) {
         return find(credentialsId);
     }
 
     /** Groovy {@code ephemeralCredentials['id'] = credentials} sugar - same as {@link #put}. */
+    @Whitelisted
     public void putAt(@NonNull String credentialsId, @NonNull Credentials credentials) {
         put(credentialsId, credentials);
     }
 
     /** Same as {@link #has} - offered under the {@code Map}-conventional name too. */
+    @Whitelisted
     public boolean containsKey(@NonNull String credentialsId) {
         return has(credentialsId);
     }
 
     /** Same as {@link #forget} - offered under the {@code Map}-conventional name too. */
+    @Whitelisted
     public boolean remove(@NonNull String credentialsId) {
         return forget(credentialsId);
     }

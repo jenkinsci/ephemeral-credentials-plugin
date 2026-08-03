@@ -37,9 +37,8 @@ import org.jenkinsci.plugins.workflow.steps.FlowInterruptedException
  * script.input(...) here is safe: this is genuine CPS-interpreted code, not
  * a plain Java call reaching into a stored script reference. It also means
  * every method called directly from here runs under the pipeline sandbox and
- * needs a {@code whitelist.txt} entry - see "Keeping whitelist.txt
- * plugin-only" below for why that list only ever names this plugin's own
- * classes.</p>
+ * needs explicit sandbox approval - see "Keeping the sandbox surface
+ * plugin-only, and run-scoped" below.</p>
  *
  * <p>Holds only the Run's plain {@code externalizableId} String, never a live
  * {@code Run} object - CPS serializes this instance (it sits in the script's
@@ -87,7 +86,7 @@ import org.jenkinsci.plugins.workflow.steps.FlowInterruptedException
  * ({@link Credentials}, {@link WithEphemeralCredentialsSupport}), so it has
  * no such risk.</p>
  *
- * <h2>Keeping whitelist.txt plugin-only</h2>
+ * <h2>Keeping the sandbox surface plugin-only, and run-scoped</h2>
  * <p>Every call this class makes onto a type it doesn't itself define -
  * {@code CredentialsProvider.findCredentialById}, {@code
  * Run.fromExternalizableId}, {@code ParameterDefinition.getName()}, {@code

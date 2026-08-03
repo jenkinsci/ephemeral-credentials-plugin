@@ -28,6 +28,7 @@ import hudson.model.ParameterDefinition;
 import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
+import org.jenkinsci.plugins.scriptsecurity.sandbox.whitelists.Whitelisted;
 
 /**
  * <p>Describes one credential a {@code withEphemeralCredentials} block may need
@@ -75,10 +76,12 @@ public abstract class EphemeralCredentialSpec implements Serializable {
         this.description = description;
     }
 
+    @Whitelisted
     public String getId() {
         return id;
     }
 
+    @Whitelisted
     public String getDescription() {
         return description;
     }
@@ -89,11 +92,13 @@ public abstract class EphemeralCredentialSpec implements Serializable {
      * {@link #getDescription()} (falling back to a generic default), set by
      * the caller - these are just the value-collecting fields.
      */
+    @Whitelisted
     public abstract List<ParameterDefinition> inputParameters();
 
     /**
      * Builds the credential from the {@code input} step's answers, keyed by
      * the parameter names returned from {@link #inputParameters()}.
      */
+    @Whitelisted
     public abstract Credentials materialize(Map<String, Object> answers);
 }

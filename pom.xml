@@ -134,6 +134,13 @@
       <groupId>org.jenkins-ci.plugins</groupId>
       <artifactId>plain-credentials</artifactId>
     </dependency>
+    <dependency>
+      <!-- @Whitelisted, used directly on methods pipeline-sandboxed code
+                 calls, in place of a whitelist.txt file - real (non-test)
+                 main code includes Pipeline Groovy, not just tests. -->
+      <groupId>org.jenkins-ci.plugins</groupId>
+      <artifactId>script-security</artifactId>
+    </dependency>
 
     <!-- For EphemeralSSHUserPrivateKey's BasicSSHUserPrivateKey. Optional:
              installations that never use ephemeralSSHUserPrivateKey don't

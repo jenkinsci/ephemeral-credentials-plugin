@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
 import jenkins.model.CauseOfInterruption;
+import org.jenkinsci.plugins.scriptsecurity.sandbox.whitelists.Whitelisted;
 import org.jenkinsci.plugins.workflow.steps.FlowInterruptedException;
 import org.jenkinsci.plugins.workflow.support.steps.input.Rejection;
 
@@ -44,14 +45,44 @@ import org.jenkinsci.plugins.workflow.support.steps.input.Rejection;
  * Logger} - is routed through a plugin-owned method here instead. That
  * .groovy file is CPS-transformed and runs under the pipeline sandbox (see its
  * own class javadoc for why it has to be Groovy at all), so every method it
- * calls directly needs its own {@code whitelist.txt} entry, including ones on
- * completely unrelated third-party classes it merely happens to touch in
- * passing. Calls made from <em>inside</em> an ordinary compiled Java method
- * body - like every method below - are never sandbox-intercepted at all,
- * regardless of what they touch internally, the same way {@link
- * EphemeralCredentialsProvider#put} or {@link EphemeralCredentialsAccessor}'s
- * methods already aren't. Concentrating all of it here means {@code
- * whitelist.txt} only ever needs to list this plugin's own classes.
+ * calls directly needs to be sandbox-approved (see {@link Whitelisted} below),
+ * including ones on completely unrelated third-party classes it merely
+ * happens to touch in passing. Calls made from <em>inside</em> an ordinary
+ * compiled Java method body - like every method below - are never
+ * sandbox-intercepted at all, regardless of what they touch internally, the
+ * same way {@link EphemeralCredentialsProvider#put} or {@link
+ * EphemeralCredentialsAccessor}'s methods already aren't. Concentrating all
+ * of it here means only this plugin's own classes ever need sandbox approval.
+ *
+ * <h2>No {@code Run}/run ID parameter on any {@code @Whitelisted} method</h2>
+ * <p>{@link Whitelisted} (like the {@code whitelist.txt} entries it replaces
+ * - see below) approves a method signature globally, for every sandboxed
+ * script on the whole Jenkins instance, not just for calls arriving via
+ * {@code WithEphemeralCredentials.groovy}. An earlier revision of {@link
+ * #isResolvable} and {@link #put} accepted the run's ID as a parameter,
+ * supplied by the (sandboxed) caller - which meant <em>any</em> sandboxed
+ * Pipeline anywhere could have called {@code
+ * WithEphemeralCredentialsSupport.isResolvable("some-other-job#5",
+ * "SOME_ID")} or the {@code put} equivalent directly, using nothing but a
+ * guessed or known {@code externalizableId}, completely bypassing {@code
+ * withEphemeralCredentials} and reading or poisoning a <em>different</em>
+ * run's ephemeral credential cache. Neither method accepts a run identifier
+ * from the caller anymore - both resolve "the run actually executing this
+ * exact call" themselves, via {@link #requireCurrentRun()} (the same {@link
+ * CpsRuns#current()}-based mechanism {@link
+ * EphemeralCredentialsAccessor#forCurrentRun} already used), so a caller can
+ * never direct either method at any run other than its own.</p>
+ *
+ * <h2>No free-text logging method either</h2>
+ * <p>An earlier revision also exposed a generic {@code logFine(String
+ * message)} passthrough to the sandboxed script, so {@code call()} could log
+ * its own narrative messages. That let any sandboxed script write an
+ * arbitrary, attacker-chosen message into Jenkins' own system log under this
+ * plugin's logger name - a log-forging concern independent of the run-ID one
+ * above. Logging now happens only inside methods whose message content is
+ * entirely fixed by this class itself, with only well-typed data the method
+ * already legitimately handles (a credential ID, the run it just resolved
+ * itself) substituted in - never an arbitrary caller-supplied string.</p>
  */
 final class WithEphemeralCredentialsSupport {
 
@@ -64,6 +95,7 @@ final class WithEphemeralCredentialsSupport {
      * normal global lookup (every registered store, including this plugin's
      * own), for the run identified by {@code runId}.
      */
+    @Whitelisted
     static boolean isResolvable(@NonNull String runId, @NonNull String credentialsId) {
         return CredentialsProvider.findCredentialById(credentialsId, StandardCredentials.class, requireRun(runId))
                 != null;
@@ -74,6 +106,7 @@ final class WithEphemeralCredentialsSupport {
      * {@code runId}. See {@code WithEphemeralCredentials.privatePut} for why
      * resolving the {@link Run} only happens here, never any earlier.
      */
+    @Whitelisted
     static void put(@NonNull String runId, @NonNull String credentialsId, @NonNull Credentials credentials) {
         EphemeralCredentialsProvider.get().put(requireRun(runId), credentialsId, credentials);
     }
@@ -102,6 +135,7 @@ final class WithEphemeralCredentialsSupport {
      * re-wrapped under that parameter's own name; any other case already
      * came back as a {@code Map} from {@code input} itself.
      */
+    @Whitelisted
     @NonNull
     @SuppressWarnings("unchecked")
     static Map<String, Object> toValuesMap(@NonNull List<ParameterDefinition> params, Object inputAnswer) {
@@ -119,6 +153,7 @@ final class WithEphemeralCredentialsSupport {
      * interrupted (the whole build being stopped, a timeout, ...), which
      * must propagate rather than being silently swallowed.
      */
+    @Whitelisted
     static boolean isDeclinedInput(@NonNull FlowInterruptedException e) {
         for (CauseOfInterruption cause : e.getCauses()) {
             if (cause instanceof Rejection) {
