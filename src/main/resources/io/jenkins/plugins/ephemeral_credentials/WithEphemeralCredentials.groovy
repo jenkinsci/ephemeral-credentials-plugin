@@ -95,13 +95,22 @@ import org.jenkinsci.plugins.workflow.steps.FlowInterruptedException
  * a plain compiled Java class. Calls made from inside an ordinary compiled
  * Java method body are never sandbox-intercepted, regardless of what they
  * touch internally (the same reason {@link EphemeralCredentialsProvider#put}
- * or {@link EphemeralCredentialsAccessor}'s own methods never needed entries
- * for what they do internally either) - only the single hop from this
- * sandboxed Groovy file into a plugin-owned Java method needs an entry, and
- * that entry names this plugin's own class. So {@code whitelist.txt} only
- * ever needs to list types this plugin itself delivers, never a third-party
- * one - see {@link EphemeralCredentialsWhitelist} for how that file is
- * loaded.</p>
+ * or {@link EphemeralCredentialsAccessor}'s own methods never needed
+ * approval for what they do internally either) - only the single hop from
+ * this sandboxed Groovy file into a plugin-owned, {@code @Whitelisted} Java
+ * method needs approval, and that method belongs to this plugin. So the
+ * sandbox-visible surface only ever consists of types this plugin itself
+ * delivers, never a third-party one.</p>
+ *
+ * <p>Critically, none of those {@code @Whitelisted} methods accept a run
+ * identifier as a parameter - see {@link WithEphemeralCredentialsSupport}'s
+ * own class javadoc for why that matters: a {@code @Whitelisted} method is
+ * callable by <em>any</em> sandboxed Pipeline on the whole Jenkins instance,
+ * not just from here, so one that took a caller-supplied run ID would let
+ * any script query or poison a <em>different</em> run's ephemeral credential
+ * cache just by guessing or knowing its {@code externalizableId}. Every
+ * method there instead resolves "whichever run is actually executing this
+ * call" itself.</p>
  *
  * <p>This step requires that the CPS script context provides the
  * {@code input} and {@code lock} steps provided by "pipeline-input-step"
@@ -136,17 +145,17 @@ class WithEphemeralCredentials implements Serializable {
             // anywhere else is left alone; only a genuinely missing one
             // reaches the interactive path below.
             //
-            // Logged at FINE, not echoed to the build console: this goes to
+            // isResolvable/put/logInputDeclined each log their own outcome
+            // at FINE, not echoed to the build console: this goes to
             // Jenkins' own system log (java.util.logging), same as
             // EphemeralCredentialsProvider's own logging - never the secret
             // value itself, only whether one was found and where.
-            if (!WithEphemeralCredentialsSupport.isResolvable(runId, spec.id)) {
-                WithEphemeralCredentialsSupport.logFine("call: '" + spec.id + "' not found in any store for " + runId + " - will collect interactively")
+            if (!WithEphemeralCredentialsSupport.isResolvable(spec.id)) {
                 script.lock("ephemeral_credentials-${runId}-${spec.id}") {
                     // Re-check, maybe another parallel branch has already asked
                     // for the credential (in its locked context, before this
                     // branch of the code flow got here):
-                    if (!WithEphemeralCredentialsSupport.isResolvable(runId, spec.id)) {
+                    if (!WithEphemeralCredentialsSupport.isResolvable(spec.id)) {
                         List params = spec.inputParameters()
                         String message = spec.description ?: "Provide credential '${spec.id}'"
                         try {
@@ -155,7 +164,6 @@ class WithEphemeralCredentials implements Serializable {
                             // groovy variable - see the class javadoc for why.
                             privatePut(spec.id, spec.materialize(WithEphemeralCredentialsSupport.toValuesMap(
                                     params, script.input(message: message, parameters: params))))
-                            WithEphemeralCredentialsSupport.logFine("call: '" + spec.id + "' collected via input and cached for " + runId)
                         } catch (FlowInterruptedException e) {
                             // Only swallow a genuine "user clicked Abort on
                             // this input"; anything else carrying
@@ -167,16 +175,10 @@ class WithEphemeralCredentials implements Serializable {
                                 throw e
                             }
                             script.echo("Credential '${spec.id}' was not provided (input declined) - continuing without it.")
-                            WithEphemeralCredentialsSupport.logFine("call: '" + spec.id + "' input declined for " + runId + " - not cached")
+                            WithEphemeralCredentialsSupport.logInputDeclined(spec.id)
                         }
-                    } else {
-                        WithEphemeralCredentialsSupport.logFine("call: '" + spec.id + "' found already cached for " + runId
-                                + " by a parallel branch while waiting for the lock")
                     }
                 }
-            } else {
-                WithEphemeralCredentialsSupport.logFine("call: '" + spec.id + "' already resolvable via an existing store for " + runId
-                        + " - no input needed")
             }
         }
 
@@ -190,6 +192,6 @@ class WithEphemeralCredentials implements Serializable {
      */
     @NonCPS
     private void privatePut(String credentialsId, Credentials credentials) {
-        WithEphemeralCredentialsSupport.put(runId, credentialsId, credentials)
+        WithEphemeralCredentialsSupport.put(credentialsId, credentials)
     }
 }

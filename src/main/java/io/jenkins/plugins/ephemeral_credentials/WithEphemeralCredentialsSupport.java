@@ -93,36 +93,55 @@ final class WithEphemeralCredentialsSupport {
     /**
      * Whether {@code credentialsId} already resolves to something, via the
      * normal global lookup (every registered store, including this plugin's
-     * own), for the run identified by {@code runId}.
+     * own), for whichever run is actually executing this call.
      */
     @Whitelisted
-    static boolean isResolvable(@NonNull String runId, @NonNull String credentialsId) {
-        return CredentialsProvider.findCredentialById(credentialsId, StandardCredentials.class, requireRun(runId))
-                != null;
+    static boolean isResolvable(@NonNull String credentialsId) {
+        Run<?, ?> run = requireCurrentRun();
+        boolean found = CredentialsProvider.findCredentialById(credentialsId, StandardCredentials.class, run) != null;
+        LOGGER.fine(() -> "isResolvable('" + credentialsId + "') for run " + run.getExternalizableId() + " = " + found);
+        return found;
     }
 
     /**
-     * Caches an already-materialized credential for the run identified by
-     * {@code runId}. See {@code WithEphemeralCredentials.privatePut} for why
-     * resolving the {@link Run} only happens here, never any earlier.
+     * Caches an already-materialized credential for whichever run is
+     * actually executing this call. See {@code
+     * WithEphemeralCredentials.privatePut} for why resolving the {@link Run}
+     * only happens here, never any earlier.
      */
     @Whitelisted
-    static void put(@NonNull String runId, @NonNull String credentialsId, @NonNull Credentials credentials) {
-        EphemeralCredentialsProvider.get().put(requireRun(runId), credentialsId, credentials);
+    static void put(@NonNull String credentialsId, @NonNull Credentials credentials) {
+        Run<?, ?> run = requireCurrentRun();
+        EphemeralCredentialsProvider.get().put(run, credentialsId, credentials);
+        LOGGER.fine(() -> "put('" + credentialsId + "') cached for run " + run.getExternalizableId());
     }
 
     /**
-     * {@link Run#fromExternalizableId} is {@code @CheckForNull} in general,
-     * but every {@code runId} reaching this class is this method's own
-     * caller's currently-executing run - it should always still be
-     * resolvable. Failing loudly here beats silently treating an
-     * unresolvable run the same as "no credential found."
+     * Logs that {@code credentialsId} was left uncached because the {@code
+     * input} prompt for it was declined - the one narrative message from the
+     * old {@code call()} that doesn't naturally fall out of {@link
+     * #isResolvable} or {@link #put} themselves, since declining means
+     * neither is called again for this attempt.
+     */
+    @Whitelisted
+    static void logInputDeclined(@NonNull String credentialsId) {
+        Run<?, ?> run = requireCurrentRun();
+        LOGGER.fine(() ->
+                "input for '" + credentialsId + "' declined for run " + run.getExternalizableId() + " - not cached");
+    }
+
+    /**
+     * Resolves "the run actually executing this exact call", via {@link
+     * CpsRuns#current()} - never from a caller-supplied identifier, so a
+     * sandboxed script can never point any method here at a run other than
+     * its own. See the class javadoc.
      */
     @NonNull
-    private static Run<?, ?> requireRun(@NonNull String runId) {
-        Run<?, ?> run = Run.fromExternalizableId(runId);
+    private static Run<?, ?> requireCurrentRun() {
+        Run<?, ?> run = CpsRuns.current();
         if (run == null) {
-            throw new IllegalStateException("Run " + runId + " could not be resolved");
+            throw new IllegalStateException(
+                    "withEphemeralCredentials can only be used from within a running " + "Pipeline build");
         }
         return run;
     }
@@ -161,10 +180,5 @@ final class WithEphemeralCredentialsSupport {
             }
         }
         return false;
-    }
-
-    /** Routes to Jenkins' own system log (java.util.logging), never the build console - never pass a secret value. */
-    static void logFine(@NonNull String message) {
-        LOGGER.fine(message);
     }
 }
