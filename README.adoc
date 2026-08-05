@@ -2,18 +2,6 @@
 
 A Jenkins plugin providing:
 
-[NOTE]
-======
-Pipeline-only. Everything below -- the `withEphemeralCredentials` step, the
-`ephemeralCredentialsPut`/`Find`/`Has`/`Forget` steps, the `ephemeralCredentials`
-map-like variable, and the five `ephemeralXxx` credential factories -- is a
-Pipeline `GlobalVariable`, usable only from Pipeline (declarative or scripted)
-Jenkinsfiles. None of it is available to classic/Freestyle jobs.
-
-If someone finds a way to reliably discover the `Run` which called us in other
-job types -- pull requests would be welcome.
-======
-
 * `EphemeralCredentialsProvider` -- a `CredentialsProvider` that resolves
   credentials only for Pipeline builds that put something into it themselves.
   Nothing it holds is ever written to disk -- a plain in-memory map, cleared
@@ -61,6 +49,16 @@ own `Class` object and its own copy of any `static` state, so there is no way
 for such a class to act as a genuine cross-build singleton. An `@Extension`
 in a real plugin, by contrast, is loaded once at Jenkins startup and is
 therefore the only way to get one shared, JVM-wide instance.
+
+It is currently pipeline-only.
+Everything below -- the `withEphemeralCredentials` step, the
+`ephemeralCredentialsPut`/`Find`/`Has`/`Forget` steps, the `ephemeralCredentials`
+map-like variable, and the five `ephemeralXxx` credential factories -- is a
+Pipeline `GlobalVariable`, usable only from Pipeline (declarative or scripted)
+Jenkinsfiles. None of it is available to classic/Freestyle jobs.
+
+If someone finds a way to reliably discover the `Run` which called us in other
+job types -- pull requests would be welcome.
 ======
 
 == Usage
