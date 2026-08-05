@@ -767,10 +767,10 @@ Produces `target/ephemeral-credentials-provider.hpi`.
 `spotless:check` (both bound to the `verify` phase). SpotBugs comes from
 the parent POM unconditionally; Spotless is already fully configured
 there too (Palantir Java Format for `.java`, `sortPom` for `pom.xml`) but
-ships **off** by default behind `spotless.check.skip` -- this project
-overrides that property to `false` rather than declaring a second,
-separate `spotless-maven-plugin` block, which would just duplicate the
-inherited one. Fix formatting issues with `mvn spotless:apply`.
+ships **off** by default behind `spotless.check.skip` -- like others
+once the codebase got a standard format, this project overrides that
+property to `false`. Please fix any formatting issues in new contributions
+with `mvn spotless:apply`.
 
 The `lockable-resources` and `pipeline-input-step` plugins are declared as
 real (non-test) dependencies, even though no Java code here imports their
