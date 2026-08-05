@@ -18,10 +18,11 @@ The ephemeral credentials, if collected, are stored in instances of classes
 provided by other plugins and later used by standard Jenkins code paths,
 which may leave traces on the build systems. For example, SSH keys or
 certificates may be saved into temporary files for tools like `git` or
-`ssh-agent` to use them. Simple echoes of passwords and usernames may,
-however, get scrubbed from your build logs and replaced by asterisks
+`ssh-agent` to use them. Simple echoes of passwords and usernames may
+get scrubbed from displayed build logs and replaced by asterisks
 (as implemented by respective plugins, see e.g. the `withCredentials()`
-step). The collection overall should not get serialized to disk when
+step), but at least temporarily are present in raw log file snippets on
+the server. The collection overall should not get serialized to disk when
 a Jenkins JVM saves state (configuration, CPS machinery).
 
 In-flight data passing through the `input()` step may get serialized by its
