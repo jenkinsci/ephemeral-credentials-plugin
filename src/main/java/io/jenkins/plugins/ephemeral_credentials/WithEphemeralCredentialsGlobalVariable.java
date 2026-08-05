@@ -52,8 +52,10 @@ import org.jenkinsci.plugins.workflow.cps.GlobalVariable;
  * resource across plugin boundaries - that discovery path isn't guaranteed
  * to search other plugins' jars.</p>
  *
+ * <p>See also the {@code WithEphemeralCredentials} step (provided
+ * in {@code WithEphemeralCredentials.groovy} source file).</p>
+ *
  * @see EphemeralCredentialSpec
- * @see WithEphemeralCredentials
  */
 @Extension
 public class WithEphemeralCredentialsGlobalVariable extends GlobalVariable {
