@@ -45,6 +45,11 @@ For more details, please see the
   caches it in the provider above, and then runs its body -- so an
   *unmodified* nested `withCredentials`/`checkout`/etc. inside that body just
   finds the value.
+* A stack of explicit `ephemeralCredentialsPut`/`Find`/`Has`/`Forget` steps
+  and the `ephemeralCredentials` map-like variable to query or manipulate
+  entries associated with the current `Run` (only), e.g. to inject the values
+  from environment secrets where available -- and later use `withCredentials`
+  like with any regular persistent entry.
 
 [NOTE]
 .Technical note
@@ -667,7 +672,8 @@ since that message can end up in the build log or server log.
 == Tests
 
 `WithEphemeralCredentialsTest` runs real declarative pipelines against an
-embedded Jenkins (`JenkinsRule`, JUnit 5 `@WithJenkins`):
+embedded Jenkins (`JenkinsRule`, JUnit 5 `@WithJenkins`), see the test
+sources for illustrations on programmatic usages of this plugin:
 
 * `alreadyRegisteredCredentialIsNeverPrompted`: an ID already resolvable via
   `SystemCredentialsProvider` is used as-is; no `input` ever appears.
