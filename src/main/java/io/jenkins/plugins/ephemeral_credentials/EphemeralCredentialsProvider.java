@@ -110,7 +110,12 @@ public class EphemeralCredentialsProvider extends CredentialsProvider {
 
     private static final Logger LOGGER = Logger.getLogger(EphemeralCredentialsProvider.class.getName());
 
-    private final Map<String, Map<String, Credentials>> byRun = new ConcurrentHashMap<>();
+    // transient: this is a Descriptor (via CredentialsProvider), so Jenkins'
+    // XStream-based descriptor persistence would otherwise be able to walk
+    // and serialize this map to disk if anything ever called save() on this
+    // singleton - nothing does today (no config form here), but transient
+    // makes that a guarantee rather than an accident of current code paths.
+    private final transient Map<String, Map<String, Credentials>> byRun = new ConcurrentHashMap<>();
 
     public static EphemeralCredentialsProvider get() {
         return ExtensionList.lookupSingleton(EphemeralCredentialsProvider.class);
