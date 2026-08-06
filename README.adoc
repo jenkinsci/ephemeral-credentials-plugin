@@ -478,7 +478,9 @@ an `EphemeralCredentialSpec` so far) can live in a JSL instead, with zero
 coordination against this plugin's release cycle.
 
 [[what-gets-saved-where]]
-=== What can get saved, when and where (read this before writing a custom `EphemeralCredentialSpec`)
+=== What can get saved, when and where
+
+NOTE: *Read this before writing a custom `EphemeralCredentialSpec`*
 
 This plugin's own design goal is that nothing it handles is ever persisted
 to disk. That guarantee is easy to state and easy to accidentally break
