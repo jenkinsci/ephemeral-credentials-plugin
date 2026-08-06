@@ -477,6 +477,7 @@ registration step -- anything that's pure data (every implementation of
 an `EphemeralCredentialSpec` so far) can live in a JSL instead, with zero
 coordination against this plugin's release cycle.
 
+[[plugin-content-what-gets-saved-where]]
 [[what-gets-saved-where]]
 === What can get saved, when and where
 
