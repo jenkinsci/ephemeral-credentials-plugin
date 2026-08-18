@@ -1,10 +1,5 @@
 = Ephemeral Credentials Plugin
 
-WARNING: *Not production-ready out of the box* until merge of pull requests
-https://github.com/jenkinsci/credentials-plugin/pull/1071 and
-https://github.com/jenkinsci/ephemeral-credentials-plugin/pull/2
-(or use of their incremental or local builds).
-
 A Jenkins plugin providing:
 
 * `EphemeralCredentialsProvider` -- a `CredentialsProvider` that resolves
