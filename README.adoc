@@ -1,4 +1,14 @@
-= Ephemeral Credentials Plugin
+= Ephemeral Credentials Plugin for Jenkins
+
+image:https://ci.jenkins.io/buildStatus/icon?job=Plugins%2Fephemeral-credentials-plugin%2Fmaster[Build Status,link=https://ci.jenkins.io/job/Plugins/job/ephemeral-credentials-plugin/job/master/]
+image:https://github.com/jenkinsci/ephemeral-credentials-plugin/actions/workflows/jenkins-security-scan.yml/badge.svg[Jenkins Security Scan,link=https://github.com/jenkinsci/ephemeral-credentials-plugin/actions/workflows/jenkins-security-scan.yml]
+//////
+image:https://codecov.io/gh/jenkinsci/ephemeral-credentials-plugin/branch/master/graph/badge.svg[Codecov Coverage,link=https://codecov.io/gh/jenkinsci/ephemeral-credentials-plugin]
+//////
+image:https://img.shields.io/jenkins/plugin/i/ephemeral-credentials.svg?color=blue&label=installations[Installations,link=https://stats.jenkins.io/pluginversions/ephemeral-credentials.html]
+image:https://img.shields.io/github/contributors/jenkinsci/ephemeral-credentials-plugin.svg?color=blue[Contributors,link=https://github.com/jenkinsci/ephemeral-credentials-plugin/graphs/contributors]
+image:https://img.shields.io/github/release/jenkinsci/ephemeral-credentials-plugin.svg?label=changelog[Changelog,link=https://github.com/jenkinsci/ephemeral-credentials-plugin/releases/latest]
+
 
 WARNING: *Not production-ready out of the box* until merge of pull requests
 https://github.com/jenkinsci/credentials-plugin/pull/1071 and
