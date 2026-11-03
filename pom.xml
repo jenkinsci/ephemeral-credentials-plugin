@@ -98,6 +98,30 @@
         <type>pom</type>
         <scope>import</scope>
       </dependency>
+
+      <!-- TEMPORARY, experimental: pins to a locally-built `credentials`
+               plugin (jimklimov/credentials-plugin, findByRun branch,
+               locally `mvn install`'d as 999999-SNAPSHOT) that adds run-aware
+               overloads of getCredentialsInItemGroup/getCredentialByIdInItem*
+               - proposed upstream to let EphemeralCredentialsProvider
+               receive the calling Run directly wherever
+               CredentialsProvider.findCredentialById(id, type, Run, ...) is
+               used (credentials-binding/git/sshagent all confirmed to use
+               exactly that overload), instead of needing CpsThread-based
+               correlation with an itemGroup-scoped fallback for when that
+               fails. Revert this override (back to whatever the BOM
+               provides) once/if this lands upstream in a real release, or
+               if abandoning the experiment. -->
+      <dependency>
+        <groupId>org.jenkins-ci.plugins</groupId>
+        <artifactId>credentials</artifactId>
+        <!-- Refer to incrementals version from currently latest iteration
+             of https://github.com/jenkinsci/credentials-plugin/pull/1071
+             as seen at https://ci.jenkins.io/job/Plugins/job/credentials-plugin/job/PR-1071/2/artifact/org/jenkins-ci/plugins/credentials/1510.v8df53db_9c7e9/credentials-1510.v8df53db_9c7e9.hpi
+          -->
+        <!-- version>999999-SNAPSHOT</version -->
+        <version>1510.v8df53db_9c7e9</version>
+      </dependency>
     </dependencies>
   </dependencyManagement>
 
@@ -243,11 +267,19 @@
       <id>repo.jenkins-ci.org</id>
       <url>https://repo.jenkins-ci.org/public/</url>
     </repository>
+    <repository>
+      <id>incrementals.repo.jenkins-ci.org</id>
+      <url>https://repo.jenkins-ci.org/incrementals/</url>
+    </repository>
   </repositories>
   <pluginRepositories>
     <pluginRepository>
       <id>repo.jenkins-ci.org</id>
       <url>https://repo.jenkins-ci.org/public/</url>
+    </pluginRepository>
+    <pluginRepository>
+      <id>incrementals.repo.jenkins-ci.org</id>
+      <url>https://repo.jenkins-ci.org/incrementals/</url>
     </pluginRepository>
   </pluginRepositories>
 
