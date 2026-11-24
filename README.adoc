@@ -10,11 +10,6 @@ image:https://img.shields.io/github/contributors/jenkinsci/ephemeral-credentials
 image:https://img.shields.io/github/release/jenkinsci/ephemeral-credentials-plugin.svg?label=changelog[Changelog,link=https://github.com/jenkinsci/ephemeral-credentials-plugin/releases/latest]
 
 
-WARNING: *Not production-ready out of the box* until merge of pull requests
-https://github.com/jenkinsci/credentials-plugin/pull/1071 and
-https://github.com/jenkinsci/ephemeral-credentials-plugin/pull/2
-(or use of their incremental or local builds).
-
 A Jenkins plugin providing:
 
 * `EphemeralCredentialsProvider` -- a `CredentialsProvider` that resolves
