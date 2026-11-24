@@ -120,7 +120,7 @@
              as seen at https://ci.jenkins.io/job/Plugins/job/credentials-plugin/job/PR-1071/2/artifact/org/jenkins-ci/plugins/credentials/1510.v8df53db_9c7e9/credentials-1510.v8df53db_9c7e9.hpi
           -->
         <!-- version>999999-SNAPSHOT</version -->
-        <version>1510.v8df53db_9c7e9</version>
+        <version>1521.v2b_2903263837</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
